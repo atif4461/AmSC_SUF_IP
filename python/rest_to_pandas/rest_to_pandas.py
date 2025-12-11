@@ -8,7 +8,7 @@ def translate_dtype(rd: str):
     elif rd == "int": return np.int32
     elif rd == "string": return str
     elif rd == "float": return np.float64
-    raise "Unknown"
+    raise Exception(f"Unknown dtype: {rd}")
 
 hddm_tags = [
     "reconstructedPhysicsEvent",
@@ -52,7 +52,7 @@ hddm_attributes = {
 }
 
 hddm_children = {
-    "HDDM": [
+    "entry": [
         "reconstructedPhysicsEvent"
     ],
 
@@ -62,6 +62,14 @@ hddm_children = {
         "ccdbContext",
         "bcalShower"
     ]
+}
+
+hddm_parents = {
+    "reconstructedPhysicsEvent": ["entry"],
+    "comment": ["reconstructedPhysicsEvent"],
+    "dataVersionString": ["reconstructedPhysicsEvent"],
+    "ccdbContext": ["reconstructedPhysicsEvent"],
+    "bcalShower": ["reconstructedPhysicsEvent"],
 }
 
 
@@ -89,25 +97,38 @@ def fill_df(hddm_table, df, columns, next_row:int) -> int:
     return next_row
 
 
-def visit(parent_table, parent_name, depth, parent_id, dfs):
+def visit(table, table_name, depth, parent_id, parent_name, dfs):
 
-    df,next_row,total_rows = dfs[parent_name]
-    for parent_row in parent_table:
-        if parent_name in hddm_attributes:
-            for col_name in hddm_attributes[parent_name]:
-                df.loc[next_row, col_name] = parent_row.getAttribute(col_name)
+    df,next_row,total_rows = dfs[table_name]
+    for row in table:
 
-        if parent_name in hddm_children:
-            for child_name in hddm_children[parent_name]:
-                visit(get_child(parent_row, child_name), child_name, depth+1, next_row, dfs)
+        if table_name in hddm_parents:
+            # Disable all other foreign keys
+            for col_name in hddm_parents[table_name]:
+                df.loc[next_row, col_name] = -1  # In case we have multiple foreign keys
+
+        # Set the foreign key for THIS parent
+        df.loc[next_row, parent_name] = parent_id
+
+        if table_name in hddm_attributes:
+            # Set the attributes
+            for col_name in hddm_attributes[table_name]:
+                df.loc[next_row, col_name] = row.getAttribute(col_name)
+
+        if table_name in hddm_children:
+            for child_name in hddm_children[table_name]:
+                visit(get_child(row, child_name), child_name, depth+1, next_row, table_name, dfs)
 
         next_row += 1
 
-    dfs[parent_name][1] = next_row
+    dfs[table_name][1] = next_row
 
 
 def make_empty_df(table_name: str, rows: int):
-    cols = hddm_attributes[table_name]
+
+    cols = {parent_name:"int" for parent_name in hddm_parents[table_name]}
+    cols.update(hddm_attributes[table_name])
+
     np_df = {col_name: np.empty(rows, dtype=translate_dtype(col_type)) 
                for col_name, col_type in cols.items()}
 
@@ -135,7 +156,7 @@ def process_rest_file(filename: str):
     for rec in ifs:
         print(f"Entry {entry} ====================================")
         dfs = setup_empty_dataframes(rec)
-        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, entry, dfs)
+        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, entry, "entry", dfs)
         print_dfs(dfs)
         entry += 1
 
