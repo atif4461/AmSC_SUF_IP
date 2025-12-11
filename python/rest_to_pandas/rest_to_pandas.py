@@ -135,10 +135,17 @@ def make_empty_df(table_name: str, rows: int):
     return pandas.DataFrame(np_df)
 
 
-def setup_empty_dataframes(entry):
+def setup_empty_dataframes(batch):
+    row_counts = {table_name: 0 for table_name in hddm_tags}
+    for entry in batch:
+        for table_name in hddm_tags:
+            row_counts[table_name] += len(get_child(entry, table_name))
+
+    print("Row counts:")
+    print(row_counts)
+
     dfs = {}
-    for table_name in hddm_tags:
-        row_count = len(get_child(entry, table_name))
+    for table_name, row_count in row_counts.items():
         df = make_empty_df(table_name, row_count)
         dfs[table_name] = [df, 0, row_count]
     return dfs
@@ -150,20 +157,31 @@ def print_dfs(dfs):
         if not df.empty:
             print(df)
 
-def process_rest_file(filename: str):
+def process_batch(batch, next_entry):
+    print("====================================================")
+    print(f"Entries {next_entry}..{next_entry+len(batch)-1}")
+    dfs = setup_empty_dataframes(batch)
+    for rec in batch:
+        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, next_entry, "entry", dfs)
+        next_entry += 1
+    print_dfs(dfs)
+    batch.clear()
+    return next_entry
+
+def process_rest_file(filename: str, batch_size: int):
     ifs = hddm_r.istream(filename)
-    entry = 0
+    next_entry = 0
+    batch = []
     for rec in ifs:
-        print(f"Entry {entry} ====================================")
-        dfs = setup_empty_dataframes(rec)
-        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, entry, "entry", dfs)
-        print_dfs(dfs)
-        entry += 1
+        batch.append(rec)
+        if len(batch) == batch_size:
+            next_entry = process_batch(batch, next_entry)
+    if batch:
+        process_batch(batch, next_entry)
 
 
 if __name__=="__main__":
-    print("REST -> pandas converter")
-    process_rest_file(sys.argv[1])
+    process_rest_file(sys.argv[1], 4)
 
 
 
