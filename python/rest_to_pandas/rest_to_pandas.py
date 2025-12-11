@@ -162,7 +162,8 @@ def process_batch(batch, next_entry):
     print(f"Entries {next_entry}..{next_entry+len(batch)-1}")
     dfs = setup_empty_dataframes(batch)
     for rec in batch:
-        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, next_entry, "entry", dfs)
+        for toplevel_table_name in hddm_children["entry"]:
+            visit(get_child(rec, toplevel_table_name), toplevel_table_name, 0, next_entry, "entry", dfs)
         next_entry += 1
     print_dfs(dfs)
     batch.clear()
