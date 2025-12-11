@@ -15,7 +15,22 @@ hddm_tags = [
     "comment",
     "dataVersionString",
     "ccdbContext",
-    "bcalShower"
+    "bcalShower",
+    "preshower",
+    "width",
+    "bcalCluster",
+    "bcalCorrelations",
+    "bcalLayers"
+]
+
+hddm_tags_to_show = [
+    "reconstructedPhysicsEvent",
+    "bcalShower",
+    "preshower",
+    "width",
+    "bcalCluster",
+    "bcalCorrelations",
+    "bcalLayers",
 ]
 
 hddm_attributes = {
@@ -48,6 +63,30 @@ hddm_attributes = {
         "yzcorr": "float",
         "tzcorr": "float",
         "Ezcorr": "float"
+    },
+    "preshower": {
+        "preshowerE": "float"
+    },
+    "width": {
+        "sigLong": "float",
+        "sigTrans": "float",
+        "sigTheta": "float"
+    },
+    "bcalCluster": {
+        "ncell": "int"
+    },
+    "bcalCorrelations": {
+        "Excorr": "float",
+        "Eycorr": "float",
+        "Etcorr": "float",
+        "txcorr": "float",
+        "tycorr": "float"
+    },
+    "bcalLayers": {
+        "E_L2": "float",
+        "E_L3": "float",
+        "E_L4": "float",
+        "rmsTime": "float"
     }
 }
 
@@ -55,13 +94,19 @@ hddm_children = {
     "entry": [
         "reconstructedPhysicsEvent"
     ],
-
     "reconstructedPhysicsEvent" : [
         "comment",
         "dataVersionString",
         "ccdbContext",
         "bcalShower"
-    ]
+    ],
+    "bcalShower": [
+        "preshower",
+        "width",
+        "bcalCluster",
+        "bcalCorrelations",
+        "bcalLayers"
+    ],
 }
 
 hddm_parents = {
@@ -70,6 +115,11 @@ hddm_parents = {
     "dataVersionString": ["reconstructedPhysicsEvent"],
     "ccdbContext": ["reconstructedPhysicsEvent"],
     "bcalShower": ["reconstructedPhysicsEvent"],
+    "preshower": ["bcalShower"],
+    "width": ["bcalShower"],
+    "bcalCluster": ["bcalShower"],
+    "bcalCorrelations": ["bcalShower"],
+    "bcalLayers": ["bcalShower"],
 }
 
 
@@ -97,7 +147,7 @@ def fill_df(hddm_table, df, columns, next_row:int) -> int:
     return next_row
 
 
-def visit(table, table_name, depth, parent_id, parent_name, dfs):
+def visit(table, table_name, parent_id, parent_name, dfs):
 
     df,next_row,total_rows = dfs[table_name]
     for row in table:
@@ -117,7 +167,7 @@ def visit(table, table_name, depth, parent_id, parent_name, dfs):
 
         if table_name in hddm_children:
             for child_name in hddm_children[table_name]:
-                visit(get_child(row, child_name), child_name, depth+1, next_row, table_name, dfs)
+                visit(get_child(row, child_name), child_name, next_row, table_name, dfs)
 
         next_row += 1
 
@@ -141,9 +191,6 @@ def setup_empty_dataframes(batch):
         for table_name in hddm_tags:
             row_counts[table_name] += len(get_child(entry, table_name))
 
-    print("Row counts:")
-    print(row_counts)
-
     dfs = {}
     for table_name, row_count in row_counts.items():
         df = make_empty_df(table_name, row_count)
@@ -151,10 +198,12 @@ def setup_empty_dataframes(batch):
     return dfs
 
 def print_dfs(dfs):
-    for table_name in hddm_tags:
+    for table_name in hddm_tags_to_show:
+        print("----------------------------------------------------")
         df, rows_filled, rows_total = dfs[table_name]
-        print(f"{table_name}: {rows_filled}/{rows_total} rows filled")
+        print(f"{table_name}")
         if not df.empty:
+            print("----------------------------------------------------")
             print(df)
 
 def process_batch(batch, next_entry):
@@ -163,10 +212,9 @@ def process_batch(batch, next_entry):
     dfs = setup_empty_dataframes(batch)
     for rec in batch:
         for toplevel_table_name in hddm_children["entry"]:
-            visit(get_child(rec, toplevel_table_name), toplevel_table_name, 0, next_entry, "entry", dfs)
+            visit(get_child(rec, toplevel_table_name), toplevel_table_name, next_entry, "entry", dfs)
         next_entry += 1
     print_dfs(dfs)
-    batch.clear()
     return next_entry
 
 def process_rest_file(filename: str, batch_size: int):
@@ -177,12 +225,14 @@ def process_rest_file(filename: str, batch_size: int):
         batch.append(rec)
         if len(batch) == batch_size:
             next_entry = process_batch(batch, next_entry)
+            batch.clear()
     if batch:
         process_batch(batch, next_entry)
+        batch.clear()
 
 
 if __name__=="__main__":
-    process_rest_file(sys.argv[1], 4)
+    process_rest_file(sys.argv[1], 1)
 
 
 
