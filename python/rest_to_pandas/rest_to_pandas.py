@@ -80,24 +80,30 @@ def getter_name(hddm_attribute_name: str) -> str:
 def get_child(hddm_parent_row, hddm_child_name):
     return hddm_parent_row.__getattribute__(getter_name(hddm_child_name))()
 
-def visit_children(parent_table, parent_name, depth, parent_id, dfs):
-    indent = "  " * depth
-    if len(parent_table) == 0:
-        print(f"{indent}{parent_name} is empty")
 
-    parent_row_id = 0
+def fill_df(hddm_table, df, columns, next_row:int) -> int:
+    for hddm_row in range(0, len(hddm_table)):
+        for col_name, col_type in columns.items():
+            df.loc[next_row, col_name] = hddm_table[hddm_row].getAttribute(col_name)
+        next_row += 1
+    return next_row
+
+
+def visit(parent_table, parent_name, depth, parent_id, dfs):
+
+    df,next_row,total_rows = dfs[parent_name]
     for parent_row in parent_table:
-        print(f"{indent}{parent_name}: {parent_row_id}")
         if parent_name in hddm_attributes:
             for col_name in hddm_attributes[parent_name]:
-                print(f"{indent}  {col_name}: {parent_row.getAttribute(col_name)}")
+                df.loc[next_row, col_name] = parent_row.getAttribute(col_name)
 
-        print()
         if parent_name in hddm_children:
             for child_name in hddm_children[parent_name]:
-                visit_children(get_child(parent_row, child_name), child_name, depth+1, parent_row_id, dfs)
+                visit(get_child(parent_row, child_name), child_name, depth+1, next_row, dfs)
 
-        parent_row_id += 1
+        next_row += 1
+
+    dfs[parent_name][1] = next_row
 
 
 def make_empty_df(table_name: str, rows: int):
@@ -107,20 +113,21 @@ def make_empty_df(table_name: str, rows: int):
 
     return pandas.DataFrame(np_df)
 
-def fill_df(hddm_table, df, columns, next_row:int) -> int:
-    for hddm_row in range(0, len(hddm_table)):
-        for col_name, col_type in columns.items():
-            df.loc[next_row, col_name] = hddm_table[hddm_row].getAttribute(col_name)
-        next_row += 1
-    return next_row
 
 def setup_empty_dataframes(entry):
     dfs = {}
     for table_name in hddm_tags:
         row_count = len(get_child(entry, table_name))
         df = make_empty_df(table_name, row_count)
-        dfs[table_name] = (df, 0, row_count)
+        dfs[table_name] = [df, 0, row_count]
     return dfs
+
+def print_dfs(dfs):
+    for table_name in hddm_tags:
+        df, rows_filled, rows_total = dfs[table_name]
+        print(f"{table_name}: {rows_filled}/{rows_total} rows filled")
+        if not df.empty:
+            print(df)
 
 def process_rest_file(filename: str):
     ifs = hddm_r.istream(filename)
@@ -128,8 +135,8 @@ def process_rest_file(filename: str):
     for rec in ifs:
         print(f"Entry {entry} ====================================")
         dfs = setup_empty_dataframes(rec)
-        visit_children(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, entry, dfs)
-        print(dfs)
+        visit(rec.getReconstructedPhysicsEvents(), "reconstructedPhysicsEvent", 0, entry, dfs)
+        print_dfs(dfs)
         entry += 1
 
 
