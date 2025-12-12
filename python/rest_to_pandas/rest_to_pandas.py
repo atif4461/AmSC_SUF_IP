@@ -2,26 +2,39 @@ import pandas
 import numpy as np
 import hddm_r
 import sys
+import xml.etree.ElementTree as ET
 
 def translate_dtype(rd: str):
     if rd == "long": return np.int64
     elif rd == "int": return np.int32
     elif rd == "string": return str
     elif rd == "float": return np.float64
+    elif rd == "Particle_t": return str
     raise Exception(f"Unknown dtype: {rd}")
 
-hddm_tags = [
-    "reconstructedPhysicsEvent",
-    "comment",
-    "dataVersionString",
-    "ccdbContext",
-    "bcalShower",
-    "preshower",
-    "width",
-    "bcalCluster",
-    "bcalCorrelations",
-    "bcalLayers"
+hddm_reserved_attrs = [
+    "minOccurs",
+    "maxOccurs",
+    "pUnit",
+    "Eunit",
+    "tunit",
+    "punit",
+    "lunit",
+    "aunit",
+    "dEdx_unit"
 ]
+
+hddm_getter_names = {
+    "vertex" : "getVertices",
+    "momentum" : "getMomenta",
+    "ecalShowerProperties" : "getEcalShowerPropertiesList",
+    "fcalShowerProperties" : "getFcalShowerPropertiesList"
+}
+
+hddm_tags = []
+hddm_attributes = {}
+hddm_children = {}
+hddm_parents = {}
 
 hddm_tags_to_show = [
     "reconstructedPhysicsEvent",
@@ -33,98 +46,12 @@ hddm_tags_to_show = [
     "bcalLayers",
 ]
 
-hddm_attributes = {
-    "reconstructedPhysicsEvent" : {
-        "eventNo": "long",
-        "runNo": "int"
-    },
-    "comment": {
-        "text": "string"
-    },
-    "dataVersionString": {
-        "text": "string"
-    },
-    "ccdbContext": {
-        "text": "string"
-    },
-    "bcalShower": {
-        "x": "float",
-        "y": "float",
-        "z": "float",
-        "t": "float",
-        "E": "float",
-        "xerr": "float",
-        "yerr": "float",
-        "zerr": "float",
-        "terr": "float",
-        "Eerr": "float",
-        "xycorr": "float",
-        "xzcorr": "float",
-        "yzcorr": "float",
-        "tzcorr": "float",
-        "Ezcorr": "float"
-    },
-    "preshower": {
-        "preshowerE": "float"
-    },
-    "width": {
-        "sigLong": "float",
-        "sigTrans": "float",
-        "sigTheta": "float"
-    },
-    "bcalCluster": {
-        "ncell": "int"
-    },
-    "bcalCorrelations": {
-        "Excorr": "float",
-        "Eycorr": "float",
-        "Etcorr": "float",
-        "txcorr": "float",
-        "tycorr": "float"
-    },
-    "bcalLayers": {
-        "E_L2": "float",
-        "E_L3": "float",
-        "E_L4": "float",
-        "rmsTime": "float"
-    }
-}
 
-hddm_children = {
-    "entry": [
-        "reconstructedPhysicsEvent"
-    ],
-    "reconstructedPhysicsEvent" : [
-        "comment",
-        "dataVersionString",
-        "ccdbContext",
-        "bcalShower"
-    ],
-    "bcalShower": [
-        "preshower",
-        "width",
-        "bcalCluster",
-        "bcalCorrelations",
-        "bcalLayers"
-    ],
-}
+def getter_name(hddm_tag_name: str) -> str:
+    if hddm_tag_name in hddm_getter_names:
+        return hddm_getter_names[hddm_tag_name]
 
-hddm_parents = {
-    "reconstructedPhysicsEvent": ["entry"],
-    "comment": ["reconstructedPhysicsEvent"],
-    "dataVersionString": ["reconstructedPhysicsEvent"],
-    "ccdbContext": ["reconstructedPhysicsEvent"],
-    "bcalShower": ["reconstructedPhysicsEvent"],
-    "preshower": ["bcalShower"],
-    "width": ["bcalShower"],
-    "bcalCluster": ["bcalShower"],
-    "bcalCorrelations": ["bcalShower"],
-    "bcalLayers": ["bcalShower"],
-}
-
-
-def getter_name(hddm_attribute_name: str) -> str:
-    getter_name = hddm_attribute_name
+    getter_name = hddm_tag_name
     first_char = getter_name[0].capitalize()
     getter_name = "get" + first_char + getter_name[1:]
     last_char = getter_name[-1]
@@ -217,8 +144,53 @@ def process_batch(batch, next_entry):
     print_dfs(dfs)
     return next_entry
 
-def process_rest_file(filename: str, batch_size: int):
-    ifs = hddm_r.istream(filename)
+def process_schemafile(schemafile_name: str):
+    tree = ET.parse(schemafile_name)
+    root = tree.getroot()
+    process_element("entry", root)
+
+
+def process_element(element_name: str, element):
+    global hddm_tags_to_show
+    global hddm_tags
+    global hddm_attributes
+    global hddm_parents
+    global hddm_children
+
+    if element_name != 'entry':
+        hddm_tags.append(element_name)
+
+    if element_name not in hddm_attributes:
+        hddm_attributes[element_name] = {}
+
+    for attr_name, attr_val in element.attrib.items():
+        if attr_name not in hddm_reserved_attrs:
+            hddm_attributes[element_name][attr_name] = attr_val
+            print(f"{element_name}:{attr_name} = {attr_val}")
+
+    for child in element:
+        child_name = child.tag.split("}",1)[-1]
+        if element_name not in hddm_children:
+            hddm_children[element_name] = []
+        hddm_children[element_name].append(child_name)
+
+        if child_name not in hddm_parents:
+            hddm_parents[child_name] = []
+        hddm_parents[child_name].append(element_name)
+
+
+        process_element(child_name, child)
+
+def print_schemafile():
+    print("======================")
+    for table, children in hddm_children.items():
+        print(table)
+        for child in children:
+            print(f"    {child}")
+
+
+def process_rest_file(datafile_name: str, batch_size: int):
+    ifs = hddm_r.istream(datafile_name)
     next_entry = 0
     batch = []
     for rec in ifs:
@@ -232,7 +204,10 @@ def process_rest_file(filename: str, batch_size: int):
 
 
 if __name__=="__main__":
-    process_rest_file(sys.argv[1], 1)
+    process_schemafile(sys.argv[2])
+    print_schemafile()
+    process_rest_file(sys.argv[1], int(sys.argv[3]))
+
 
 
 

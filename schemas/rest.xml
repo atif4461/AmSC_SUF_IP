@@ -46,7 +46,7 @@
       <fcalShowerProperties minOccurs="0" maxOccurs="1" docaTrack="float" timeTrack="float" sumU="float" sumV="float"
                             E1E9="float" E9E25="float"/>
       <fcalShowerNBlocks minOccurs="0" numBlocks="int"/>
-      <fcalShowerIsNearBorder minOccurrs="0" isNearBorder="int"/>
+      <fcalShowerIsNearBorder minOccurs="0" isNearBorder="int"/>
     </fcalShower>
     <fcalHit maxOccurs="unbounded" minOccurs="0" jtag="string" row="int" column="int"
 	      x="float" y="float" E="float" Eunit="GeV" t="float" tunit="ns" intOverPeak="float"/>
