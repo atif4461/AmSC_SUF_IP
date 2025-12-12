@@ -1,7 +1,8 @@
+import argparse
+from pathlib import Path
 import pandas
 import numpy as np
 import hddm_r
-import sys
 import xml.etree.ElementTree as ET
 
 def translate_dtype(rd: str):
@@ -15,12 +16,11 @@ def translate_dtype(rd: str):
 hddm_reserved_attrs = [
     "minOccurs",
     "maxOccurs",
-    "pUnit",
-    "Eunit",
+    "lunit",
     "tunit",
     "punit",
-    "lunit",
     "aunit",
+    "Eunit",
     "dEdx_unit"
 ]
 
@@ -35,17 +35,6 @@ hddm_tags = []
 hddm_attributes = {}
 hddm_children = {}
 hddm_parents = {}
-
-hddm_tags_to_show = [
-    "reconstructedPhysicsEvent",
-    "bcalShower",
-    "preshower",
-    "width",
-    "bcalCluster",
-    "bcalCorrelations",
-    "bcalLayers",
-]
-
 
 def getter_name(hddm_tag_name: str) -> str:
     if hddm_tag_name in hddm_getter_names:
@@ -82,7 +71,7 @@ def visit(table, table_name, parent_id, parent_name, dfs):
         if table_name in hddm_parents:
             # Disable all other foreign keys
             for col_name in hddm_parents[table_name]:
-                df.loc[next_row, col_name] = -1  # In case we have multiple foreign keys
+                df.loc[next_row, col_name] = -1
 
         # Set the foreign key for THIS parent
         df.loc[next_row, parent_name] = parent_id
@@ -151,7 +140,6 @@ def process_schemafile(schemafile_name: str):
 
 
 def process_element(element_name: str, element):
-    global hddm_tags_to_show
     global hddm_tags
     global hddm_attributes
     global hddm_parents
@@ -166,7 +154,6 @@ def process_element(element_name: str, element):
     for attr_name, attr_val in element.attrib.items():
         if attr_name not in hddm_reserved_attrs:
             hddm_attributes[element_name][attr_name] = attr_val
-            print(f"{element_name}:{attr_name} = {attr_val}")
 
     for child in element:
         child_name = child.tag.split("}",1)[-1]
@@ -204,9 +191,32 @@ def process_rest_file(datafile_name: str, batch_size: int):
 
 
 if __name__=="__main__":
-    process_schemafile(sys.argv[2])
-    print_schemafile()
-    process_rest_file(sys.argv[1], int(sys.argv[3]))
+    parser = argparse.ArgumentParser(description="GlueX REST to pandas dataframes converter")
+    parser.add_argument("rest_filepath", type=Path, help="Path to the GlueX REST file.")
+    parser.add_argument("--schema", "-s", type=Path, default=None, help="Path to schema file (optional).")
+    parser.add_argument("--batch-size", "-b", type=int, default=1, help="Number of REST entries in each dataframe batch (default: 1)")
+    parser.add_argument("--print-tables", "-p", type=str, default=None,
+        help=(
+            "Comma-separated list of dataframe names to print for debugging. "
+            "If omitted, all dataframes are printed."
+        ),
+    )
+
+    args = parser.parse_args()
+
+    if args.schema == None:
+        args.schema = Path(__file__).parent.parent.parent / "schemas/rest.xml"
+
+    process_schemafile(args.schema)
+    #if len(sys.argv) == 3:
+    #    print_schemafile()
+    #    exit
+
+    if args.print_tables != None:
+        hddm_tags_to_show = args.print_tables.split(",")
+    else:
+        hddm_tags_to_show = hddm_tags
+    process_rest_file(str(args.rest_filepath), args.batch_size)
 
 
 
