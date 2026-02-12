@@ -6,19 +6,19 @@ import glob
 import sys
 import os
 import sysconfig
-from distutils.core import setup, Extension
+from setuptools import setup, Extension
 from shutil import copyfile, rmtree
 import re
 
 # Remove the "-Wstrict-prototypes" compiler options,
 # which isn't valid for C++
-import distutils.sysconfig
-cfg_vars = distutils.sysconfig.get_config_vars()
+import sysconfig
+cfg_vars = sysconfig.get_config_vars()
 for key,value in cfg_vars.items():
    if type(value) == str:
       cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
 
-os.environ['CC'] = 'g++'  # distutils uses compiler options unique to gcc
+os.environ['CC'] = 'g++'  # compiler options unique to gcc
 
 build_dir = 'build_hddm_r'
 if len(sys.argv) == 1:
