@@ -9,6 +9,8 @@ dependencies = ["pyzmq", "pytest", "pandas"]
 
 [project.scripts]
 amsc-cli = "amsc.cli:main"
+example-ejfat-source = "amsc.example_ejfat_workflow.source:main"
+example-ejfat-worker = "amsc.example_ejfat_workflow.worker:main"
 
 [build-system]
 requires = ["scikit-build-core", "pybind11"]

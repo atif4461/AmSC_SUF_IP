@@ -3,14 +3,17 @@ import e2sar_py
 import os
 import signal
 import time
+import argparse
 
 def create_message(source_id, event_nr):
     return f"Source {source_id} proudly presents event {event_nr} for your viewing pleasure."
 
 
-def main():
-    # Retrieve EJFAT_URI
-    ejfat_uri_str = os.getenv("EJFAT_URI")
+def run_source(
+        ejfat_uri_str = os.getenv("EJFAT_URI"),
+        data_id = 0
+    ):
+
     print("Launching source with EJFAT_URI=", ejfat_uri_str)
 
     # Parse EJFAT_URI
@@ -24,14 +27,9 @@ def main():
     if result.has_error():
         print("Error registering as sender: ", result.error().message)
         exit(1)
-    else:
-        print("add_sender_self returned with status code: ", result.value())
 
-
-
-    # Not sure what these numbers are supposed to be, exactly
-    data_id = 0
-    event_source_id = 0
+    # TODO: Not sure what event_source_id is and how it differs from data_id
+    event_source_id = 0 #data_id
 
     # Create the Segmenter. Don't worry about multithreading here yet.
     segmenter = e2sar_py.DataPlane.Segmenter(
@@ -62,11 +60,10 @@ def main():
         data = message.encode("utf-8")
 
         # Send message
-        segmenter.addToSendQueue(data, event_nr)
+        segmenter.addToSendQueue(data, len(data), _eventNum=event_nr)
 
         time.sleep(1) # seconds
         event_nr += 1
-
 
     # Shut down segmenter threads
     print("Joining threads...")
@@ -74,7 +71,34 @@ def main():
     print("Shutdown complete.")
 
 
+def main():
+
+    parser = argparse.ArgumentParser(
+        description="Run a simple example EJFAT source."
+    )
+
+    parser.add_argument(
+        "--url",
+        dest="url_str",
+        type=str,
+        default=os.getenv("EJFAT_URI"),
+        help="EJFAT_URI with instance token, e.g. ejfats://$TOKEN_GOES_HERE@ejfat-1.jlab.org:18347/lb/$LB_ID",
+    )
+    parser.add_argument(
+        "--id",
+        dest="data_id",
+        type=int,
+        default=0,
+        help="Unique data ID",
+    )
+
+    args = parser.parse_args()
+
+    run_source(
+        ejfat_uri_str = args.url_str,
+        data_id = args.data_id,
+    )
+
+
 if __name__ == "__main__":
     main()
-
-
