@@ -13,6 +13,7 @@ from flask import Flask, jsonify, render_template, request
 
 PROXY_HOST = "127.0.0.1"
 PROXY_PORT = 11096
+PROXY_API_PREFIX = "/v1"
 SIMULATOR_PROCESS = None
 
 
@@ -190,7 +191,7 @@ def _proxy_http_request(
 
 def _proxy_connected(host: str = PROXY_HOST, port: int = PROXY_PORT) -> bool:
     try:
-        reply = _proxy_http_request("GET", "/ping", host=host, port=port, timeout_sec=0.7)
+        reply = _proxy_http_request("GET", f"{PROXY_API_PREFIX}/ping", host=host, port=port, timeout_sec=0.7)
     except Exception:
         return False
 
@@ -199,7 +200,7 @@ def _proxy_connected(host: str = PROXY_HOST, port: int = PROXY_PORT) -> bool:
 
 def _get_proxy_ping(host: str = PROXY_HOST, port: int = PROXY_PORT):
     try:
-        reply = _proxy_http_request("GET", "/ping", host=host, port=port, timeout_sec=0.7)
+        reply = _proxy_http_request("GET", f"{PROXY_API_PREFIX}/ping", host=host, port=port, timeout_sec=0.7)
     except Exception:
         return None
 
@@ -543,7 +544,12 @@ def create_app() -> Flask:
     @app.route("/api/workflow/check", methods=["POST"])
     def workflow_check():
         try:
-            reply = _proxy_http_request("POST", "/check-components", host=PROXY_HOST, port=PROXY_PORT)
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/check-components",
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+            )
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 503
 
@@ -555,7 +561,12 @@ def create_app() -> Flask:
     @app.route("/api/workflow/run", methods=["POST"])
     def workflow_run():
         try:
-            reply = _proxy_http_request("POST", "/run-workflow", host=PROXY_HOST, port=PROXY_PORT)
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/run-workflow",
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+            )
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 503
 
