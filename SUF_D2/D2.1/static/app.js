@@ -3,6 +3,7 @@
   const addBtn = document.getElementById("add-config-btn");
   const editBtn = document.getElementById("edit-config-btn");
   const continueBtn = document.getElementById("continue-btn");
+  const configSummary = document.getElementById("config-summary");
 
   const configModalEl = document.getElementById("configModal");
   const configModalLabel = document.getElementById("configModalLabel");
@@ -66,6 +67,7 @@
       configSelect.disabled = true;
       editBtn.disabled = true;
       continueBtn.disabled = true;
+      configSummary.textContent = "No saved configurations.";
       return;
     }
 
@@ -98,8 +100,69 @@
       }
 
       setSelectOptions(payload.items || [], selectedFile);
+      await updateSelectedConfigSummary();
     } catch {
       setSelectOptions([], "");
+      configSummary.textContent = "No saved configurations.";
+    }
+  };
+
+  const truncateText = (value, maxLength = 120) => {
+    if (value.length <= maxLength) {
+      return value;
+    }
+
+    return `${value.slice(0, maxLength - 1)}…`;
+  };
+
+  const summarizeConfiguration = (config = {}) => {
+    const dataSource = config.dataSource || {};
+    const isFilesystem = dataSource.mode === "files";
+
+    if (!isFilesystem) {
+      const live = dataSource.live || {};
+      const system = live.system || "Unknown system";
+      const host = live.etHost || "host unset";
+      const port = live.port || "11111";
+      return `DAQ | System: ${system} | ET: ${host}:${port}`;
+    }
+
+    const files = dataSource.files || {};
+    const path = files.path || "path unset";
+    const selectedFiles = Array.isArray(files.files) ? files.files : [];
+
+    const hasWildcard = selectedFiles.some((entry) => entry.includes("*"));
+    const filesList = selectedFiles.length ? selectedFiles.join(", ") : "*";
+    const filesPart = hasWildcard
+      ? `Files: ${truncateText(filesList, 70)}`
+      : `Files (${selectedFiles.length}): ${truncateText(filesList, 70)}`;
+
+    return `Filesystem | Path: ${path} | ${filesPart}`;
+  };
+
+  const updateSelectedConfigSummary = async () => {
+    const selectedOption = configSelect.options[configSelect.selectedIndex];
+    const selectedFile = selectedOption?.dataset?.file || selectedOption?.value || "";
+
+    if (!selectedFile) {
+      configSummary.textContent = "No configuration selected.";
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/config/load?file=${encodeURIComponent(selectedFile)}`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to load configuration");
+      }
+
+      const summary = summarizeConfiguration(payload.config || {});
+      configSummary.textContent = summary;
+      configSummary.title = summary;
+    } catch {
+      const fallbackSummary = `Selected: ${selectedOption?.text || "Unknown configuration"}`;
+      configSummary.textContent = fallbackSummary;
+      configSummary.title = fallbackSummary;
     }
   };
 
@@ -275,7 +338,7 @@
     dataSourceFiles.checked = false;
     daqSystemSelect.value = "coda-et";
     etHost.value = "";
-    etPort.value = "";
+    etPort.value = "11111";
     stationName.value = "";
     blocking.checked = false;
 
@@ -307,7 +370,7 @@
 
     daqSystemSelect.value = systemMap[live.system] || "coda-et";
     etHost.value = live.etHost || "";
-    etPort.value = live.port || "";
+    etPort.value = live.port || "11111";
     stationName.value = live.stationName || "";
     blocking.checked = Boolean(live.blocking);
 
@@ -542,6 +605,10 @@
     filesRegex.value = selected.join(", ");
     filesystemModal.hide();
     updateSaveButtonState();
+  });
+
+  configSelect.addEventListener("change", () => {
+    updateSelectedConfigSummary();
   });
 
   loadConfigList();
