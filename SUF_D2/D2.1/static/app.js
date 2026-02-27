@@ -30,6 +30,8 @@
   const filesRegex = document.getElementById("files-regex");
   const filesLoop = document.getElementById("files-loop");
   const browseBtn = document.getElementById("browse-btn");
+  const dataCatalogBtn = document.getElementById("data-catalog-btn");
+  const dataMovementBtn = document.getElementById("data-movement-btn");
 
   const transportType = document.getElementById("transport-type");
   const loadBalancerRow = document.getElementById("load-balancer-row");
@@ -42,6 +44,21 @@
   const dataIpv4 = document.getElementById("data-ipv4");
   const dataIpv6 = document.getElementById("data-ipv6");
   const dataPorts = document.getElementById("data-ports");
+
+  const hpcLocation = document.getElementById("hpc-location");
+  const hpcProject = document.getElementById("hpc-project");
+  const hpcQueue = document.getElementById("hpc-queue");
+  const hpcNumJobs = document.getElementById("hpc-num-jobs");
+  const hpcCpusPerJob = document.getElementById("hpc-cpus-per-job");
+  const hpcWholeNode = document.getElementById("hpc-whole-node");
+  const hpcMemory = document.getElementById("hpc-memory");
+  const hpcTime = document.getElementById("hpc-time");
+  const hpcContainer = document.getElementById("hpc-container");
+  const hpcModel = document.getElementById("hpc-model");
+  const hpcContainerCatalogBtn = document.getElementById("hpc-container-catalog-btn");
+  const hpcModelCatalogBtn = document.getElementById("hpc-model-catalog-btn");
+
+  const amscIntegrationModalEl = document.getElementById("amscIntegrationModal");
 
   const filesystemModalEl = document.getElementById("filesystemModal");
   const filesystemModalLabel = document.getElementById("filesystemModalLabel");
@@ -184,6 +201,7 @@
 
   const filesystemModal = new bootstrap.Modal(filesystemModalEl);
   const dataSourceHelpModal = new bootstrap.Modal(dataSourceHelpModalEl);
+  const amscIntegrationModal = new bootstrap.Modal(amscIntegrationModalEl);
 
   const buildConfigurationPayload = () => {
     const dataSourceMode = dataSourceFiles.checked ? "files" : "live";
@@ -226,6 +244,18 @@
             ports: dataPorts.value.trim(),
           },
         },
+      },
+      hpcCompute: {
+        location: hpcLocation.value,
+        project: hpcProject.value.trim(),
+        queue: hpcQueue.value.trim(),
+        numJobs: hpcNumJobs.value.trim(),
+        cpusPerJob: hpcCpusPerJob.value.trim(),
+        wholeNode: hpcWholeNode.checked,
+        memory: hpcMemory.value.trim(),
+        time: hpcTime.value.trim(),
+        container: hpcContainer.value.trim(),
+        model: hpcModel.value.trim(),
       },
     };
   };
@@ -393,6 +423,11 @@
     dataPorts.value = "[16384-32767]";
   };
 
+  const setWholeNodeState = () => {
+    hpcCpusPerJob.disabled = hpcWholeNode.checked;
+    hpcMemory.disabled = hpcWholeNode.checked;
+  };
+
   const resetModalFields = () => {
     dataSourceLive.checked = true;
     dataSourceFiles.checked = false;
@@ -411,14 +446,27 @@
     loadBalancer.value = "esnet";
     applyLoadBalancerDefaults("esnet");
 
+    hpcLocation.value = "JLab/ifarm";
+    hpcProject.value = "";
+    hpcQueue.value = "";
+    hpcNumJobs.value = "";
+    hpcCpusPerJob.value = "";
+    hpcWholeNode.checked = false;
+    hpcMemory.value = "";
+    hpcTime.value = "";
+    hpcContainer.value = "";
+    hpcModel.value = "";
+
     setDataSourcePanel();
     setDaqSystemPanel();
     setTransportPanel();
+    setWholeNodeState();
   };
 
   const applyConfigToForm = (config = {}) => {
     const dataSource = config.dataSource || {};
     const dataTransport = config.dataTransport || {};
+    const hpcCompute = config.hpcCompute || {};
     const live = dataSource.live || {};
     const files = dataSource.files || {};
 
@@ -463,9 +511,21 @@
     dataIpv6.value = dataPlane.ipv6 || dataIpv6.value;
     dataPorts.value = dataPlane.ports || dataPorts.value;
 
+    hpcLocation.value = hpcCompute.location || "JLab/ifarm";
+    hpcProject.value = hpcCompute.project || "";
+    hpcQueue.value = hpcCompute.queue || "";
+    hpcNumJobs.value = hpcCompute.numJobs || "";
+    hpcCpusPerJob.value = hpcCompute.cpusPerJob || "";
+    hpcWholeNode.checked = Boolean(hpcCompute.wholeNode);
+    hpcMemory.value = hpcCompute.memory || "";
+    hpcTime.value = hpcCompute.time || "";
+    hpcContainer.value = hpcCompute.container || "";
+    hpcModel.value = hpcCompute.model || "";
+
     setDataSourcePanel();
     setDaqSystemPanel();
     setTransportPanel();
+    setWholeNodeState();
   };
 
   const setWorkflowActive = (active) => {
@@ -621,6 +681,10 @@
     applyLoadBalancerDefaults(loadBalancer.value);
     updateSaveButtonState();
   });
+  hpcWholeNode.addEventListener("change", () => {
+    setWholeNodeState();
+    updateSaveButtonState();
+  });
 
   [
     configName,
@@ -642,6 +706,16 @@
     dataIpv4,
     dataIpv6,
     dataPorts,
+    hpcLocation,
+    hpcProject,
+    hpcQueue,
+    hpcNumJobs,
+    hpcCpusPerJob,
+    hpcWholeNode,
+    hpcMemory,
+    hpcTime,
+    hpcContainer,
+    hpcModel,
   ].forEach((element) => {
     element.addEventListener("input", updateSaveButtonState);
     element.addEventListener("change", updateSaveButtonState);
@@ -653,6 +727,12 @@
 
   dataSourceHelpBtn.addEventListener("click", () => {
     dataSourceHelpModal.show();
+  });
+
+  [dataCatalogBtn, dataMovementBtn, hpcContainerCatalogBtn, hpcModelCatalogBtn].forEach((button) => {
+    button.addEventListener("click", () => {
+      amscIntegrationModal.show();
+    });
   });
 
   fsHomeBtn.addEventListener("click", () => {

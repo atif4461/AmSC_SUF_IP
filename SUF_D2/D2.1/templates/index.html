@@ -53,7 +53,7 @@
 
           <div class="row g-3 align-items-end">
             <div class="col-lg-6">
-              <label for="config-select" class="form-label">Select Existing Configuration</label>
+              <label for="config-select" class="form-label">Select Existing Configuration:</label>
               <select id="config-select" class="form-select">
                 <option value="baseline">Baseline Stream Test</option>
                 <option value="high-throughput">High Throughput Transfer</option>
@@ -142,7 +142,7 @@
           <div class="modal-body">
             <form id="config-form" class="row g-3">
               <div class="col-12 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                <label for="config-name" class="form-label mb-0 me-md-2">Configuration Name</label>
+                <label for="config-name" class="form-label mb-0 me-md-2">Configuration Name:</label>
                 <input id="config-name" class="form-control" type="text" required />
               </div>
 
@@ -168,7 +168,7 @@
                           value="live"
                           checked
                         />
-                        <label class="form-check-label" for="data-source-live">Live DAQ</label>
+                        <label class="form-check-label" for="data-source-live">Live DAQ:</label>
                       </div>
                       <div class="form-check">
                         <input
@@ -178,14 +178,14 @@
                           id="data-source-files"
                           value="files"
                         />
-                        <label class="form-check-label" for="data-source-files">File(s)</label>
+                        <label class="form-check-label" for="data-source-files">File(s):</label>
                       </div>
                     </div>
 
                     <div class="col-md-9">
                       <div id="live-daq-panel" class="row g-3">
                         <div class="col-md-6">
-                          <label for="daq-system" class="form-label">System</label>
+                          <label for="daq-system" class="form-label">System:</label>
                           <select id="daq-system" class="form-select">
                             <option value="coda-et">CODA (ET)</option>
                             <option value="glrs">GLRS</option>
@@ -196,15 +196,15 @@
                         <div id="coda-settings" class="col-12">
                           <div class="row g-3">
                             <div class="col-md-8">
-                              <label for="et-host" class="form-label">ET Host</label>
+                              <label for="et-host" class="form-label">ET Host:</label>
                               <input id="et-host" class="form-control" type="text" placeholder="hostname or IP" />
                             </div>
                             <div class="col-md-4">
-                              <label for="et-port" class="form-label">Port</label>
+                              <label for="et-port" class="form-label">Port:</label>
                               <input id="et-port" class="form-control" type="text" placeholder="11111" />
                             </div>
                             <div class="col-md-8">
-                              <label for="station-name" class="form-label">Station Name (optional)</label>
+                              <label for="station-name" class="form-label">Station Name (optional):</label>
                               <input
                                 id="station-name"
                                 class="form-control"
@@ -250,11 +250,11 @@
                         </div>
 
                         <div class="col-md-5">
-                          <label for="files-path" class="form-label">Directory Path</label>
+                          <label for="files-path" class="form-label">Directory Path:</label>
                           <input id="files-path" class="form-control" type="text" />
                         </div>
                         <div class="col-md-5">
-                          <label for="files-regex" class="form-label">Files</label>
+                          <label for="files-regex" class="form-label">Files:</label>
                           <input id="files-regex" class="form-control" type="text" />
                         </div>
                         <div class="col-md-2 d-flex flex-column align-items-stretch justify-content-end gap-2">
@@ -300,15 +300,15 @@
                             <legend class="float-none w-auto px-2 mb-2">Control Plane</legend>
                             <div class="row g-2">
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="control-ipv4" class="form-label mb-0 text-nowrap">IPv4</label>
+                                <label for="control-ipv4" class="form-label mb-0 text-nowrap">IPv4:</label>
                                 <input id="control-ipv4" class="form-control transport-entry-short" type="text" />
                               </div>
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="control-ipv6" class="form-label mb-0 text-nowrap">IPv6</label>
+                                <label for="control-ipv6" class="form-label mb-0 text-nowrap">IPv6:</label>
                                 <input id="control-ipv6" class="form-control transport-entry-short" type="text" />
                               </div>
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="control-ports" class="form-label mb-0 text-nowrap">Port Range</label>
+                                <label for="control-ports" class="form-label mb-0 text-nowrap">Port Range:</label>
                                 <input id="control-ports" class="form-control transport-entry-short" type="text" />
                               </div>
                             </div>
@@ -320,15 +320,15 @@
                             <legend class="float-none w-auto px-2 mb-2">Data Plane</legend>
                             <div class="row g-2">
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="data-ipv4" class="form-label mb-0 text-nowrap">IPv4</label>
+                                <label for="data-ipv4" class="form-label mb-0 text-nowrap">IPv4:</label>
                                 <input id="data-ipv4" class="form-control transport-entry-short" type="text" />
                               </div>
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="data-ipv6" class="form-label mb-0 text-nowrap">IPv6</label>
+                                <label for="data-ipv6" class="form-label mb-0 text-nowrap">IPv6:</label>
                                 <input id="data-ipv6" class="form-control transport-entry-short" type="text" />
                               </div>
                               <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
-                                <label for="data-ports" class="form-label mb-0 text-nowrap">Port Range</label>
+                                <label for="data-ports" class="form-label mb-0 text-nowrap">Port Range:</label>
                                 <input id="data-ports" class="form-control transport-entry-short" type="text" />
                               </div>
                             </div>
@@ -339,7 +339,82 @@
 
                     <div id="globus-panel" class="col-12 d-none">
                       <div class="alert alert-info mb-0" role="alert">
-                        Globus transport support comming soon.
+                        Globus transport not currently supported.
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+
+              <div class="col-12">
+                <fieldset class="data-source-box p-3">
+                  <legend class="float-none w-auto px-2 mb-0">HPC Compute</legend>
+
+                  <div class="row g-2">
+                    <div class="col-12 d-flex flex-column flex-md-row align-items-md-center gap-3 flex-wrap">
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="hpc-location" class="form-label mb-0 fw-semibold text-nowrap">Location:</label>
+                        <select id="hpc-location" class="form-select transport-select-narrow">
+                          <option value="JLab/ifarm">JLab/ifarm</option>
+                          <option value="JLab/testbed">JLab/testbed</option>
+                          <option value="NERSC/Perlmutter">NERSC/Perlmutter</option>
+                          <option value="BNL/SDCC">BNL/SDCC</option>
+                        </select>
+                      </div>
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="hpc-project" class="form-label mb-0 text-nowrap">Project charge code:</label>
+                        <input id="hpc-project" class="form-control hpc-entry-project" type="text" />
+                      </div>
+
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="hpc-queue" class="form-label mb-0 text-nowrap">Queue:</label>
+                        <input id="hpc-queue" class="form-control hpc-entry-medium" type="text" />
+                      </div>
+
+                      <div class="form-check mb-0 ms-md-auto hpc-whole-node-wrap">
+                        <input id="hpc-whole-node" class="form-check-input" type="checkbox" />
+                        <label class="form-check-label text-nowrap" for="hpc-whole-node">whole node</label>
+                      </div>
+                    </div>
+
+                    <div class="col-12 d-flex flex-column flex-md-row align-items-md-center gap-0 flex-md-nowrap hpc-inline-row">
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-1">
+                        <label for="hpc-num-jobs" class="form-label mb-0 text-nowrap">Num. Jobs:</label>
+                        <input id="hpc-num-jobs" class="form-control hpc-entry-short" type="number" min="1" />
+                      </div>
+
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-1">
+                        <label for="hpc-cpus-per-job" class="form-label mb-0 text-nowrap">CPUs/job:</label>
+                        <input id="hpc-cpus-per-job" class="form-control hpc-entry-short" type="number" min="1" />
+                      </div>
+
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-1">
+                        <label for="hpc-memory" class="form-label mb-0 text-nowrap">Memory:</label>
+                        <input id="hpc-memory" class="form-control hpc-entry-medium" type="text" placeholder="e.g. 256G" />
+                      </div>
+
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-1">
+                        <label for="hpc-time" class="form-label mb-0 text-nowrap">Time:</label>
+                        <input id="hpc-time" class="form-control hpc-entry-medium" type="text" placeholder="HH:MM:SS" />
+                      </div>
+
+                    </div>
+
+                    <div class="col-12 d-flex flex-column gap-2 mt-2">
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="hpc-container" class="form-label mb-0 text-nowrap">Container:</label>
+                        <input id="hpc-container" class="form-control hpc-entry-wide" type="text" />
+                        <button type="button" id="hpc-container-catalog-btn" class="btn btn-outline-primary btn-sm text-nowrap">
+                          AmSC Container Catalog ...
+                        </button>
+                      </div>
+
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="hpc-model" class="form-label mb-0 text-nowrap">Model:</label>
+                        <input id="hpc-model" class="form-control hpc-entry-wide" type="text" />
+                        <button type="button" id="hpc-model-catalog-btn" class="btn btn-outline-primary btn-sm text-nowrap">
+                          AmSC Model Catalog ...
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -388,6 +463,29 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="amscIntegrationModal"
+      tabindex="-1"
+      aria-labelledby="amscIntegrationModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="amscIntegrationModalLabel">American Science Cloud Integration</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            American Science Cloud integration is coming soon.
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
           </div>
         </div>
       </div>

@@ -200,6 +200,7 @@ def create_app() -> Flask:
             "savedFrom": str(launch_cwd),
             "dataSource": payload.get("dataSource", {}),
             "dataTransport": payload.get("dataTransport", {}),
+            "hpcCompute": payload.get("hpcCompute", {}),
         }
 
         output_path.write_text(_to_yaml(yaml_payload) + "\n", encoding="utf-8")

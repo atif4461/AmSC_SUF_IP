@@ -97,6 +97,35 @@ body {
   width: min(180px, 100%);
 }
 
+.hpc-entry-short {
+  width: min(80px, 100%);
+}
+
+.hpc-entry-medium {
+  width: min(120px, 100%);
+}
+
+.hpc-entry-wide {
+  width: min(260px, 100%);
+}
+
+.hpc-entry-project {
+  width: min(182px, 100%);
+}
+
+.hpc-inline-row {
+  gap: 0 !important;
+  justify-content: flex-start;
+}
+
+.hpc-inline-row > div {
+  flex: 0 0 auto;
+}
+
+.hpc-whole-node-wrap {
+  white-space: nowrap;
+}
+
 @media (min-width: 768px) {
   .transport-top-row {
     column-gap: 100px;
