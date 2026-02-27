@@ -6,7 +6,6 @@ from sys import argv
 
 def main(argv=None):
 
-    print("This is supposed to show")
     parser = argparse.ArgumentParser(prog="amsc", description="A unified interface for Nathan's AmSC adventures")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
