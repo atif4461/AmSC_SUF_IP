@@ -8,9 +8,7 @@ requires-python = ">=3.9"
 dependencies = ["pyzmq", "pytest", "pandas"]
 
 [project.scripts]
-amsc-cli = "amsc.cli:main"
-example-ejfat-source = "amsc.example_ejfat_workflow.source:main"
-example-ejfat-worker = "amsc.example_ejfat_workflow.worker:main"
+amsc = "amsc.cli:main"
 
 [build-system]
 requires = ["scikit-build-core", "pybind11"]
@@ -20,6 +18,5 @@ build-backend = "scikit_build_core.build"
 build-dir = "build/{wheel_tag}"
 cmake.source-dir = "."
 wheel.packages = ["src/python/amsc"]
-
 
 
