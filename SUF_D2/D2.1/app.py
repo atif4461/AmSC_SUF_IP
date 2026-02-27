@@ -1,6 +1,18 @@
 from pathlib import Path
+import json
+import os
+import subprocess
+import sys
+import time
+from urllib import error as url_error
+from urllib import request as url_request
 
 from flask import Flask, jsonify, render_template, request
+
+
+PROXY_HOST = "127.0.0.1"
+PROXY_PORT = 11096
+SIMULATOR_PROCESS = None
 
 
 def _slugify(name: str) -> str:
@@ -128,6 +140,76 @@ def _config_dir() -> Path:
     return path
 
 
+def _tail_text(path: Path, max_lines: int = 20) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+
+    if not lines:
+        return ""
+
+    return "\n".join(lines[-max_lines:])
+
+
+def _proxy_http_request(
+    method: str,
+    path: str,
+    *,
+    payload: dict | None = None,
+    host: str = PROXY_HOST,
+    port: int = PROXY_PORT,
+    timeout_sec: float = 1.2,
+):
+    url = f"http://{host}:{port}{path}"
+    data = None
+    headers = {}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = url_request.Request(url=url, method=method.upper(), data=data, headers=headers)
+    try:
+        with url_request.urlopen(req, timeout=timeout_sec) as response:
+            body = response.read().decode("utf-8")
+            return json.loads(body) if body else {}
+    except url_error.HTTPError as exc:
+        body = exc.read().decode("utf-8") if exc.fp else ""
+        detail = ""
+        if body:
+            try:
+                parsed = json.loads(body)
+                detail = parsed.get("error") or parsed.get("message") or ""
+            except Exception:
+                detail = body
+        raise RuntimeError(detail or f"Proxy HTTP error {exc.code}") from exc
+    except url_error.URLError as exc:
+        raise ConnectionError(f"Unable to connect to proxy at {host}:{port}") from exc
+
+
+def _proxy_connected(host: str = PROXY_HOST, port: int = PROXY_PORT) -> bool:
+    try:
+        reply = _proxy_http_request("GET", "/ping", host=host, port=port, timeout_sec=0.7)
+    except Exception:
+        return False
+
+    return bool(isinstance(reply, dict) and reply.get("ok"))
+
+
+def _get_proxy_ping(host: str = PROXY_HOST, port: int = PROXY_PORT):
+    try:
+        reply = _proxy_http_request("GET", "/ping", host=host, port=port, timeout_sec=0.7)
+    except Exception:
+        return None
+
+    return reply if isinstance(reply, dict) and reply.get("ok") else None
+
+
+def _simulator_started_by_app() -> bool:
+    global SIMULATOR_PROCESS
+    return bool(SIMULATOR_PROCESS is not None and SIMULATOR_PROCESS.poll() is None)
+
+
 def create_app() -> Flask:
     app_root = Path(__file__).resolve().parent
     app = Flask(
@@ -246,6 +328,171 @@ def create_app() -> Flask:
             return jsonify({"error": f"Invalid configuration format: {safe_name}"}), 400
 
         return jsonify({"config": parsed, "file": safe_name})
+
+    @app.route("/api/proxy/status")
+    def proxy_status():
+        ping = _get_proxy_ping(PROXY_HOST, PROXY_PORT)
+        connected = ping is not None
+        return jsonify(
+            {
+                "connected": connected,
+                "host": PROXY_HOST,
+                "port": PROXY_PORT,
+                "startedByApp": _simulator_started_by_app(),
+                "isSimulator": bool(isinstance(ping, dict) and ping.get("service") == "proxy-simulator"),
+            }
+        )
+
+    @app.route("/api/proxy/start", methods=["POST"])
+    def proxy_start():
+        global SIMULATOR_PROCESS
+
+        if _proxy_connected(PROXY_HOST, PROXY_PORT):
+            return jsonify(
+                {
+                    "ok": True,
+                    "alreadyRunning": True,
+                    "host": PROXY_HOST,
+                    "port": PROXY_PORT,
+                    "startedByApp": _simulator_started_by_app(),
+                }
+            )
+
+        simulator_script = app_root / "proxy_simulator.py"
+        if not simulator_script.exists():
+            return jsonify({"ok": False, "error": f"Simulator script not found: {simulator_script.name}"}), 500
+
+        log_path = app_root / "proxy_simulator.log"
+        launch_candidates = []
+        if sys.executable:
+            launch_candidates.append(sys.executable)
+        if "python3" not in launch_candidates:
+            launch_candidates.append("python3")
+
+        last_error = ""
+        started_process = None
+
+        for launcher in launch_candidates:
+            try:
+                with log_path.open("a", encoding="utf-8") as log_file:
+                    log_file.write(
+                        f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Launch attempt: {launcher} {simulator_script.name}\n"
+                    )
+                    log_file.flush()
+
+                log_stream = log_path.open("a", encoding="utf-8")
+                child_env = os.environ.copy()
+                child_env.pop("WERKZEUG_SERVER_FD", None)
+                child_env.pop("WERKZEUG_RUN_MAIN", None)
+                process = subprocess.Popen(
+                    [launcher, str(simulator_script)],
+                    cwd=str(app_root),
+                    stdout=log_stream,
+                    stderr=log_stream,
+                    start_new_session=True,
+                    env=child_env,
+                )
+                log_stream.close()
+            except Exception as exc:  # pragma: no cover - OS dependent
+                last_error = f"Failed to launch simulator with '{launcher}': {exc}"
+                continue
+
+            SIMULATOR_PROCESS = process
+            started_process = process
+
+            for _ in range(10):
+                time.sleep(0.3)
+
+                if _proxy_connected(PROXY_HOST, PROXY_PORT):
+                    return jsonify(
+                        {
+                            "ok": True,
+                            "started": True,
+                            "pid": process.pid,
+                            "host": PROXY_HOST,
+                            "port": PROXY_PORT,
+                            "launcher": launcher,
+                            "logPath": str(log_path),
+                        }
+                    )
+
+                if process.poll() is not None:
+                    tail = _tail_text(log_path, 18)
+                    last_error = f"Simulator exited early with code {process.returncode}."
+                    if tail:
+                        last_error = f"{last_error}\nRecent simulator log:\n{tail}"
+                    break
+
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                    process.wait(timeout=1.5)
+                except Exception:
+                    process.kill()
+                finally:
+                    SIMULATOR_PROCESS = None
+
+        if started_process is not None and started_process.poll() is None:
+            SIMULATOR_PROCESS = started_process
+
+        if not last_error:
+            last_error = (
+                f"Simulator was launched but proxy is still unreachable at {PROXY_HOST}:{PROXY_PORT}."
+            )
+
+        return jsonify(
+            {
+                "ok": False,
+                "error": last_error,
+                "logPath": str(log_path),
+            }
+        ), 502
+
+    @app.route("/api/proxy/stop", methods=["POST"])
+    def proxy_stop():
+        global SIMULATOR_PROCESS
+
+        if SIMULATOR_PROCESS is None or SIMULATOR_PROCESS.poll() is not None:
+            SIMULATOR_PROCESS = None
+            return jsonify({"ok": False, "error": "No Flask-managed simulator process is running."}), 400
+
+        process = SIMULATOR_PROCESS
+        try:
+            process.terminate()
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=2)
+        except Exception as exc:  # pragma: no cover - OS dependent
+            return jsonify({"ok": False, "error": f"Failed to stop simulator: {exc}"}), 500
+        finally:
+            SIMULATOR_PROCESS = None
+
+        return jsonify({"ok": True, "stopped": True, "host": PROXY_HOST, "port": PROXY_PORT})
+
+    @app.route("/api/workflow/check", methods=["POST"])
+    def workflow_check():
+        try:
+            reply = _proxy_http_request("POST", "/check-components", host=PROXY_HOST, port=PROXY_PORT)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
+
+    @app.route("/api/workflow/run", methods=["POST"])
+    def workflow_run():
+        try:
+            reply = _proxy_http_request("POST", "/run-workflow", host=PROXY_HOST, port=PROXY_PORT)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
 
     return app
 

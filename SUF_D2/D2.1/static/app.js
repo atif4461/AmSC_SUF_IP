@@ -73,10 +73,20 @@
 
   const workflowSection = document.getElementById("workflow-section");
   const configurationSection = document.getElementById("configuration-section");
+  const proxyConnectionLabel = document.getElementById("proxy-connection-label");
   const checkBtn = document.getElementById("check-btn");
   const runBtn = document.getElementById("run-btn");
   const cancelBtn = document.getElementById("cancel-btn");
   const componentsBody = document.getElementById("components-body");
+
+  const proxyConnectModalEl = document.getElementById("proxyConnectModal");
+  const proxyConnectMessage = document.getElementById("proxy-connect-message");
+  const proxyStartSimulatorBtn = document.getElementById("proxy-start-simulator-btn");
+  const proxyInfoModalEl = document.getElementById("proxyInfoModal");
+  const proxyInfoMessage = document.getElementById("proxy-info-message");
+  const proxyStopModalEl = document.getElementById("proxyStopModal");
+  const proxyStopMessage = document.getElementById("proxy-stop-message");
+  const proxyStopSimulatorBtn = document.getElementById("proxy-stop-simulator-btn");
 
   const componentRows = [...componentsBody.querySelectorAll("tr")];
   let modalMode = "add";
@@ -84,6 +94,12 @@
   let fsParentDir = null;
   let fsSelectedFiles = new Set();
   let baselineConfigJson = "";
+  let resolveProxyStartPrompt = null;
+  let resolveProxyStopPrompt = null;
+  let proxyHeartbeatInFlight = false;
+
+  const defaultProxyHost = "127.0.0.1";
+  const defaultProxyPort = 11096;
 
   const setSelectOptions = (items, selectedFile = "") => {
     configSelect.innerHTML = "";
@@ -202,6 +218,9 @@
   const filesystemModal = new bootstrap.Modal(filesystemModalEl);
   const dataSourceHelpModal = new bootstrap.Modal(dataSourceHelpModalEl);
   const amscIntegrationModal = new bootstrap.Modal(amscIntegrationModalEl);
+  const proxyConnectModal = new bootstrap.Modal(proxyConnectModalEl);
+  const proxyInfoModal = new bootstrap.Modal(proxyInfoModalEl);
+  const proxyStopModal = new bootstrap.Modal(proxyStopModalEl);
 
   const buildConfigurationPayload = () => {
     const dataSourceMode = dataSourceFiles.checked ? "files" : "live";
@@ -268,6 +287,154 @@
   const setBaselineFromCurrent = () => {
     baselineConfigJson = JSON.stringify(buildConfigurationPayload());
     updateSaveButtonState();
+  };
+
+  const setProxyConnectionLabel = (connected) => {
+    proxyConnectionLabel.textContent = connected ? "Proxy: Connected" : "Proxy: Disconnected";
+    proxyConnectionLabel.classList.remove("text-bg-success", "text-bg-danger");
+    proxyConnectionLabel.classList.add(connected ? "text-bg-success" : "text-bg-danger");
+  };
+
+  const fetchProxyStatus = async () => {
+    try {
+      const response = await fetch("/api/proxy/status");
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || "Unable to query proxy status");
+      }
+
+      const status = {
+        connected: Boolean(payload.connected),
+        host: payload.host || defaultProxyHost,
+        port: payload.port || defaultProxyPort,
+        startedByApp: Boolean(payload.startedByApp),
+        isSimulator: Boolean(payload.isSimulator),
+      };
+
+      setProxyConnectionLabel(status.connected);
+      return status;
+    } catch {
+      const status = {
+        connected: false,
+        host: defaultProxyHost,
+        port: defaultProxyPort,
+        startedByApp: false,
+        isSimulator: false,
+      };
+      setProxyConnectionLabel(false);
+      return status;
+    }
+  };
+
+  const showProxyInfo = (message) => {
+    proxyInfoMessage.textContent = message;
+    proxyInfoModal.show();
+  };
+
+  const promptStartSimulator = (message) => {
+    proxyConnectMessage.textContent = message;
+
+    return new Promise((resolve) => {
+      resolveProxyStartPrompt = resolve;
+      proxyConnectModal.show();
+    });
+  };
+
+  const promptStopSimulator = (message) => {
+    proxyStopMessage.textContent = message;
+
+    return new Promise((resolve) => {
+      resolveProxyStopPrompt = resolve;
+      proxyStopModal.show();
+    });
+  };
+
+  const ensureProxyConnection = async () => {
+    const status = await fetchProxyStatus();
+    if (status.connected) {
+      return true;
+    }
+
+    const shouldStart = await promptStartSimulator(
+      `Unable to connect to the proxy at ${status.host}:${status.port}. Start the simulator now?`
+    );
+
+    if (!shouldStart) {
+      return false;
+    }
+
+    try {
+      const response = await fetch("/api/proxy/start", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        showProxyInfo(payload.error || "Failed to launch simulator.");
+        await fetchProxyStatus();
+        return false;
+      }
+    } catch {
+      showProxyInfo("Failed to launch simulator.");
+      await fetchProxyStatus();
+      return false;
+    }
+
+    const refreshed = await fetchProxyStatus();
+    if (!refreshed.connected) {
+      showProxyInfo(
+        `Simulator launch command completed, but the proxy is still unreachable at ${refreshed.host}:${refreshed.port}.`
+      );
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleProxyBadgeClick = async () => {
+    const status = await fetchProxyStatus();
+
+    if (!status.connected) {
+      await ensureProxyConnection();
+      return;
+    }
+
+    if (status.startedByApp && status.isSimulator) {
+      const shouldStop = await promptStopSimulator(
+        `Proxy simulator is running at ${status.host}:${status.port}. Shut it down?`
+      );
+
+      if (!shouldStop) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/proxy/stop", { method: "POST" });
+        const payload = await response.json();
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || "Failed to stop simulator.");
+        }
+      } catch (error) {
+        showProxyInfo(error.message || "Failed to stop simulator.");
+      }
+
+      await fetchProxyStatus();
+      return;
+    }
+
+    showProxyInfo(`Connected to proxy at ${status.host}:${status.port}.`);
+  };
+
+  const startProxyHeartbeat = () => {
+    window.setInterval(async () => {
+      if (proxyHeartbeatInFlight) {
+        return;
+      }
+
+      proxyHeartbeatInFlight = true;
+      try {
+        await fetchProxyStatus();
+      } finally {
+        proxyHeartbeatInFlight = false;
+      }
+    }, 3000);
   };
 
   const escapeHtml = (value) =>
@@ -650,13 +817,48 @@
     updateRowStatuses("pending");
   });
 
-  checkBtn.addEventListener("click", () => {
+  checkBtn.addEventListener("click", async () => {
+    if (!(await ensureProxyConnection())) {
+      return;
+    }
+
     updateRowStatuses("checking");
-    window.setTimeout(() => updateRowStatuses("ready"), 700);
+
+    try {
+      const response = await fetch("/api/workflow/check", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || "Pre-launch check failed.");
+      }
+
+      window.setTimeout(() => updateRowStatuses("ready"), 350);
+      setProxyConnectionLabel(true);
+    } catch (error) {
+      setProxyConnectionLabel(false);
+      updateRowStatuses("pending");
+      showProxyInfo(error.message || "Pre-launch check failed.");
+    }
   });
 
-  runBtn.addEventListener("click", () => {
+  runBtn.addEventListener("click", async () => {
+    if (!(await ensureProxyConnection())) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/workflow/run", { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) {
+        throw new Error(payload.error || "Unable to start workflow.");
+      }
+    } catch (error) {
+      setProxyConnectionLabel(false);
+      showProxyInfo(error.message || "Unable to start workflow.");
+      return;
+    }
+
     updateRowStatuses("running");
+    setProxyConnectionLabel(true);
 
     const selectedName = configSelect.options[configSelect.selectedIndex]?.text || "Unknown Configuration";
     const statusUrl = `/workflow-status?config=${encodeURIComponent(selectedName)}&status=${encodeURIComponent("Running")}`;
@@ -735,6 +937,51 @@
     });
   });
 
+  proxyStartSimulatorBtn.addEventListener("click", () => {
+    if (resolveProxyStartPrompt) {
+      const resolver = resolveProxyStartPrompt;
+      resolveProxyStartPrompt = null;
+      resolver(true);
+    }
+    proxyConnectModal.hide();
+  });
+
+  proxyConnectModalEl.addEventListener("hidden.bs.modal", () => {
+    if (resolveProxyStartPrompt) {
+      const resolver = resolveProxyStartPrompt;
+      resolveProxyStartPrompt = null;
+      resolver(false);
+    }
+  });
+
+  proxyStopSimulatorBtn.addEventListener("click", () => {
+    if (resolveProxyStopPrompt) {
+      const resolver = resolveProxyStopPrompt;
+      resolveProxyStopPrompt = null;
+      resolver(true);
+    }
+    proxyStopModal.hide();
+  });
+
+  proxyStopModalEl.addEventListener("hidden.bs.modal", () => {
+    if (resolveProxyStopPrompt) {
+      const resolver = resolveProxyStopPrompt;
+      resolveProxyStopPrompt = null;
+      resolver(false);
+    }
+  });
+
+  proxyConnectionLabel.addEventListener("click", () => {
+    handleProxyBadgeClick();
+  });
+
+  proxyConnectionLabel.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleProxyBadgeClick();
+    }
+  });
+
   fsHomeBtn.addEventListener("click", () => {
     loadDirectory("");
   });
@@ -793,6 +1040,8 @@
   });
 
   loadConfigList();
+  fetchProxyStatus();
+  startProxyHeartbeat();
   resetModalFields();
   setBaselineFromCurrent();
   setWorkflowActive(false);

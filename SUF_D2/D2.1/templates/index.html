@@ -67,7 +67,7 @@
               <button id="edit-config-btn" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#configModal">
                 Edit Selected
               </button>
-              <button id="continue-btn" class="btn btn-primary ms-lg-auto">Continue</button>
+              <button id="continue-btn" class="btn btn-primary ms-lg-auto">Pre-launch</button>
             </div>
           </div>
 
@@ -81,7 +81,18 @@
         <div class="card-body p-4">
           <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3 mb-3">
             <h2 class="h4 mb-0">Workflow Pre-launch</h2>
-            <span class="badge rounded-pill text-bg-secondary">Step 2</span>
+            <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
+              <span
+                id="proxy-connection-label"
+                class="badge rounded-pill text-bg-danger"
+                role="button"
+                tabindex="0"
+                aria-label="Proxy connection status"
+                title="Click to manage proxy connection"
+                >Proxy: Disconnected</span
+              >
+              <span class="badge rounded-pill text-bg-secondary">Step 2</span>
+            </div>
           </div>
 
           <div class="d-flex flex-wrap gap-2 mb-4">
@@ -486,6 +497,75 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="proxyConnectModal"
+      tabindex="-1"
+      aria-labelledby="proxyConnectModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="proxyConnectModalLabel">Proxy Connection</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="proxy-connect-message">
+            Unable to connect to the proxy.
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No</button>
+            <button type="button" id="proxy-start-simulator-btn" class="btn btn-primary">Yes, start simulator</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="proxyInfoModal"
+      tabindex="-1"
+      aria-labelledby="proxyInfoModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="proxyInfoModalLabel">Proxy Status</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="proxy-info-message"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="proxyStopModal"
+      tabindex="-1"
+      aria-labelledby="proxyStopModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="proxyStopModalLabel">Proxy Simulator</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="proxy-stop-message">
+            A Flask-managed proxy simulator is running. Would you like to shut it down?
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No</button>
+            <button type="button" id="proxy-stop-simulator-btn" class="btn btn-danger">Yes, stop simulator</button>
           </div>
         </div>
       </div>
