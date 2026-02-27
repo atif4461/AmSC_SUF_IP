@@ -77,6 +77,32 @@ body {
   height: 1.6rem;
 }
 
+.transport-plane-box {
+  border: 1px solid rgba(45, 59, 90, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.transport-plane-box > legend {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #33405f;
+}
+
+.transport-select-narrow {
+  width: min(220px, 100%);
+}
+
+.transport-entry-short {
+  width: min(180px, 100%);
+}
+
+@media (min-width: 768px) {
+  .transport-top-row {
+    column-gap: 100px;
+  }
+}
+
 .fs-browser-list {
   max-height: 340px;
   overflow: auto;

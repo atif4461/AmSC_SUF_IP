@@ -199,6 +199,7 @@ def create_app() -> Flask:
             "name": config_name,
             "savedFrom": str(launch_cwd),
             "dataSource": payload.get("dataSource", {}),
+            "dataTransport": payload.get("dataTransport", {}),
         }
 
         output_path.write_text(_to_yaml(yaml_payload) + "\n", encoding="utf-8")

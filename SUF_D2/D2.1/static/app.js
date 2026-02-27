@@ -31,6 +31,18 @@
   const filesLoop = document.getElementById("files-loop");
   const browseBtn = document.getElementById("browse-btn");
 
+  const transportType = document.getElementById("transport-type");
+  const loadBalancerRow = document.getElementById("load-balancer-row");
+  const ejfatPanel = document.getElementById("ejfat-panel");
+  const globusPanel = document.getElementById("globus-panel");
+  const loadBalancer = document.getElementById("load-balancer");
+  const controlIpv4 = document.getElementById("control-ipv4");
+  const controlIpv6 = document.getElementById("control-ipv6");
+  const controlPorts = document.getElementById("control-ports");
+  const dataIpv4 = document.getElementById("data-ipv4");
+  const dataIpv6 = document.getElementById("data-ipv6");
+  const dataPorts = document.getElementById("data-ports");
+
   const filesystemModalEl = document.getElementById("filesystemModal");
   const filesystemModalLabel = document.getElementById("filesystemModalLabel");
   const fsCurrentPath = document.getElementById("fs-current-path");
@@ -132,10 +144,14 @@
     const selectedFiles = Array.isArray(files.files) ? files.files : [];
 
     const hasWildcard = selectedFiles.some((entry) => entry.includes("*"));
-    const filesList = selectedFiles.length ? selectedFiles.join(", ") : "*";
-    const filesPart = hasWildcard
-      ? `Files: ${truncateText(filesList, 70)}`
-      : `Files (${selectedFiles.length}): ${truncateText(filesList, 70)}`;
+    let filesPart = "Files: *";
+
+    if (selectedFiles.length) {
+      const filesList = selectedFiles.join(", ");
+      filesPart = hasWildcard
+        ? `Files: ${truncateText(filesList, 70)}`
+        : `Files (${selectedFiles.length}): ${truncateText(filesList, 70)}`;
+    }
 
     return `Filesystem | Path: ${path} | ${filesPart}`;
   };
@@ -193,6 +209,22 @@
           files: selectedFiles,
           loop: filesLoop.checked,
           dataId: dataIdLabel.textContent.trim(),
+        },
+      },
+      dataTransport: {
+        type: transportType.value,
+        ejfat: {
+          loadBalancer: loadBalancer.value,
+          controlPlane: {
+            ipv4: controlIpv4.value.trim(),
+            ipv6: controlIpv6.value.trim(),
+            ports: controlPorts.value.trim(),
+          },
+          dataPlane: {
+            ipv4: dataIpv4.value.trim(),
+            ipv6: dataIpv6.value.trim(),
+            ports: dataPorts.value.trim(),
+          },
         },
       },
     };
@@ -333,6 +365,34 @@
     }
   };
 
+  const setTransportPanel = () => {
+    const isEjfat = transportType.value === "ejfat";
+    loadBalancerRow.classList.toggle("d-none", !isEjfat);
+    ejfatPanel.classList.toggle("d-none", !isEjfat);
+    globusPanel.classList.toggle("d-none", isEjfat);
+  };
+
+  const applyLoadBalancerDefaults = (value) => {
+    if (value === "jlab") {
+      controlIpv4.value = "129.57.177.133";
+      controlIpv6.value = "-";
+      controlPorts.value = "[1025-49151]";
+
+      dataIpv4.value = "172.19.22.0.244";
+      dataIpv6.value = "-";
+      dataPorts.value = "[16384-32767]";
+      return;
+    }
+
+    controlIpv4.value = "192.188.29.6";
+    controlIpv6.value = "2001:400:a300::6";
+    controlPorts.value = "[1025-49151]";
+
+    dataIpv4.value = "192.188.29.0/24";
+    dataIpv6.value = "2001:400:a300::/64";
+    dataPorts.value = "[16384-32767]";
+  };
+
   const resetModalFields = () => {
     dataSourceLive.checked = true;
     dataSourceFiles.checked = false;
@@ -347,12 +407,18 @@
     filesRegex.value = "";
     filesLoop.checked = false;
 
+    transportType.value = "ejfat";
+    loadBalancer.value = "esnet";
+    applyLoadBalancerDefaults("esnet");
+
     setDataSourcePanel();
     setDaqSystemPanel();
+    setTransportPanel();
   };
 
   const applyConfigToForm = (config = {}) => {
     const dataSource = config.dataSource || {};
+    const dataTransport = config.dataTransport || {};
     const live = dataSource.live || {};
     const files = dataSource.files || {};
 
@@ -379,8 +445,27 @@
     filesLoop.checked = Boolean(files.loop);
     dataIdLabel.textContent = files.dataId || "-";
 
+    const transportTypeValue = dataTransport.type === "globus" ? "globus" : "ejfat";
+    transportType.value = transportTypeValue;
+
+    const ejfat = dataTransport.ejfat || {};
+    const loadBalancerValue = ejfat.loadBalancer === "jlab" ? "jlab" : "esnet";
+    loadBalancer.value = loadBalancerValue;
+    applyLoadBalancerDefaults(loadBalancerValue);
+
+    const controlPlane = ejfat.controlPlane || {};
+    const dataPlane = ejfat.dataPlane || {};
+
+    controlIpv4.value = controlPlane.ipv4 || controlIpv4.value;
+    controlIpv6.value = controlPlane.ipv6 || controlIpv6.value;
+    controlPorts.value = controlPlane.ports || controlPorts.value;
+    dataIpv4.value = dataPlane.ipv4 || dataIpv4.value;
+    dataIpv6.value = dataPlane.ipv6 || dataIpv6.value;
+    dataPorts.value = dataPlane.ports || dataPorts.value;
+
     setDataSourcePanel();
     setDaqSystemPanel();
+    setTransportPanel();
   };
 
   const setWorkflowActive = (active) => {
@@ -528,6 +613,14 @@
   dataSourceLive.addEventListener("change", setDataSourcePanel);
   dataSourceFiles.addEventListener("change", setDataSourcePanel);
   daqSystemSelect.addEventListener("change", setDaqSystemPanel);
+  transportType.addEventListener("change", () => {
+    setTransportPanel();
+    updateSaveButtonState();
+  });
+  loadBalancer.addEventListener("change", () => {
+    applyLoadBalancerDefaults(loadBalancer.value);
+    updateSaveButtonState();
+  });
 
   [
     configName,
@@ -541,6 +634,14 @@
     filesPath,
     filesRegex,
     filesLoop,
+    transportType,
+    loadBalancer,
+    controlIpv4,
+    controlIpv6,
+    controlPorts,
+    dataIpv4,
+    dataIpv6,
+    dataPorts,
   ].forEach((element) => {
     element.addEventListener("input", updateSaveButtonState);
     element.addEventListener("change", updateSaveButtonState);

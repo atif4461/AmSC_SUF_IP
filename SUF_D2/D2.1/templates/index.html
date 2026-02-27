@@ -238,9 +238,15 @@
                         </div>
 
                         <div class="col-12">
-                          <button type="button" id="data-movement-btn" class="btn btn-outline-primary btn-sm">
-                            AmSC Data Movement ...
-                          </button>
+                          <div class="d-flex justify-content-between align-items-center gap-2">
+                            <button type="button" id="data-movement-btn" class="btn btn-outline-primary btn-sm">
+                              AmSC Data Movement ...
+                            </button>
+                            <div class="form-check ms-auto mb-0">
+                              <input id="files-loop" class="form-check-input" type="checkbox" />
+                              <label class="form-check-label" for="files-loop">Loop</label>
+                            </div>
+                          </div>
                         </div>
 
                         <div class="col-md-5">
@@ -257,12 +263,83 @@
                           </button>
                         </div>
 
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
+              </div>
+
+              <div class="col-12">
+                <fieldset class="data-source-box p-3">
+                  <legend class="float-none w-auto px-2 mb-0">Data Transport</legend>
+
+                  <div class="row g-3">
+                    <div class="col-12 d-flex flex-column flex-md-row align-items-md-center transport-top-row">
+                      <div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="transport-type" class="form-label mb-0 fw-semibold text-nowrap">Type:</label>
+                        <select id="transport-type" class="form-select transport-select-narrow">
+                          <option value="ejfat">EJFAT</option>
+                          <option value="globus">Globus</option>
+                        </select>
+                      </div>
+
+                      <div id="load-balancer-row" class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+                        <label for="load-balancer" class="form-label mb-0 text-nowrap">Load Balancer:</label>
+                        <select id="load-balancer" class="form-select transport-select-narrow">
+                          <option value="esnet">ESnet</option>
+                          <option value="jlab">JLab</option>
+                          <option value="bnl" disabled>BNL</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div id="ejfat-panel" class="col-12">
+                      <div class="row g-3">
                         <div class="col-12">
-                          <div class="form-check">
-                            <input id="files-loop" class="form-check-input" type="checkbox" />
-                            <label class="form-check-label" for="files-loop">Loop</label>
-                          </div>
+                          <fieldset class="transport-plane-box p-3">
+                            <legend class="float-none w-auto px-2 mb-2">Control Plane</legend>
+                            <div class="row g-2">
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="control-ipv4" class="form-label mb-0 text-nowrap">IPv4</label>
+                                <input id="control-ipv4" class="form-control transport-entry-short" type="text" />
+                              </div>
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="control-ipv6" class="form-label mb-0 text-nowrap">IPv6</label>
+                                <input id="control-ipv6" class="form-control transport-entry-short" type="text" />
+                              </div>
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="control-ports" class="form-label mb-0 text-nowrap">Port Range</label>
+                                <input id="control-ports" class="form-control transport-entry-short" type="text" />
+                              </div>
+                            </div>
+                          </fieldset>
                         </div>
+
+                        <div class="col-12">
+                          <fieldset class="transport-plane-box p-3">
+                            <legend class="float-none w-auto px-2 mb-2">Data Plane</legend>
+                            <div class="row g-2">
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="data-ipv4" class="form-label mb-0 text-nowrap">IPv4</label>
+                                <input id="data-ipv4" class="form-control transport-entry-short" type="text" />
+                              </div>
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="data-ipv6" class="form-label mb-0 text-nowrap">IPv6</label>
+                                <input id="data-ipv6" class="form-control transport-entry-short" type="text" />
+                              </div>
+                              <div class="col-md-4 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                                <label for="data-ports" class="form-label mb-0 text-nowrap">Port Range</label>
+                                <input id="data-ports" class="form-control transport-entry-short" type="text" />
+                              </div>
+                            </div>
+                          </fieldset>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div id="globus-panel" class="col-12 d-none">
+                      <div class="alert alert-info mb-0" role="alert">
+                        Globus transport support comming soon.
                       </div>
                     </div>
                   </div>
