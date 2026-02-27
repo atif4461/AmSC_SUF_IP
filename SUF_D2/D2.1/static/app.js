@@ -309,6 +309,8 @@
         port: payload.port || defaultProxyPort,
         startedByApp: Boolean(payload.startedByApp),
         isSimulator: Boolean(payload.isSimulator),
+        canStop: Boolean(payload.canStop),
+        localPid: payload.localPid || null,
       };
 
       setProxyConnectionLabel(status.connected);
@@ -320,6 +322,8 @@
         port: defaultProxyPort,
         startedByApp: false,
         isSimulator: false,
+        canStop: false,
+        localPid: null,
       };
       setProxyConnectionLabel(false);
       return status;
@@ -396,9 +400,13 @@
       return;
     }
 
-    if (status.startedByApp && status.isSimulator) {
+    if (status.isSimulator && status.canStop) {
+      const source = status.startedByApp
+        ? "A Flask-managed proxy simulator"
+        : "A local proxy simulator process";
+      const pidText = status.localPid ? ` (PID ${status.localPid})` : "";
       const shouldStop = await promptStopSimulator(
-        `Proxy simulator is running at ${status.host}:${status.port}. Shut it down?`
+        `${source} is running at ${status.host}:${status.port}${pidText}. Shut it down?`
       );
 
       if (!shouldStop) {
@@ -416,6 +424,13 @@
       }
 
       await fetchProxyStatus();
+      return;
+    }
+
+    if (status.isSimulator && !status.canStop) {
+      showProxyInfo(
+        `Connected to proxy simulator at ${status.host}:${status.port}, but this Flask app cannot stop that process.`
+      );
       return;
     }
 

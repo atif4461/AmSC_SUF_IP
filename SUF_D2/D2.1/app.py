@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -210,6 +211,60 @@ def _simulator_started_by_app() -> bool:
     return bool(SIMULATOR_PROCESS is not None and SIMULATOR_PROCESS.poll() is None)
 
 
+def _find_listening_pid(port: int) -> int | None:
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return None
+
+    if result.returncode not in (0, 1):
+        return None
+
+    lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        return None
+
+    try:
+        return int(lines[0])
+    except ValueError:
+        return None
+
+
+def _can_signal_pid(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _terminate_pid(pid: int, timeout_sec: float = 3.0) -> bool:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if not _can_signal_pid(pid):
+            return True
+        time.sleep(0.15)
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+    return not _can_signal_pid(pid)
+
+
 def create_app() -> Flask:
     app_root = Path(__file__).resolve().parent
     app = Flask(
@@ -333,6 +388,8 @@ def create_app() -> Flask:
     def proxy_status():
         ping = _get_proxy_ping(PROXY_HOST, PROXY_PORT)
         connected = ping is not None
+        local_pid = _find_listening_pid(PROXY_PORT) if connected else None
+        can_stop = _can_signal_pid(local_pid)
         return jsonify(
             {
                 "connected": connected,
@@ -340,6 +397,8 @@ def create_app() -> Flask:
                 "port": PROXY_PORT,
                 "startedByApp": _simulator_started_by_app(),
                 "isSimulator": bool(isinstance(ping, dict) and ping.get("service") == "proxy-simulator"),
+                "localPid": local_pid,
+                "canStop": can_stop,
             }
         )
 
@@ -452,23 +511,34 @@ def create_app() -> Flask:
     def proxy_stop():
         global SIMULATOR_PROCESS
 
-        if SIMULATOR_PROCESS is None or SIMULATOR_PROCESS.poll() is not None:
-            SIMULATOR_PROCESS = None
-            return jsonify({"ok": False, "error": "No Flask-managed simulator process is running."}), 400
+        if SIMULATOR_PROCESS is not None and SIMULATOR_PROCESS.poll() is None:
+            process = SIMULATOR_PROCESS
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+            except Exception as exc:  # pragma: no cover - OS dependent
+                return jsonify({"ok": False, "error": f"Failed to stop simulator: {exc}"}), 500
+            finally:
+                SIMULATOR_PROCESS = None
 
-        process = SIMULATOR_PROCESS
-        try:
-            process.terminate()
-            process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=2)
-        except Exception as exc:  # pragma: no cover - OS dependent
-            return jsonify({"ok": False, "error": f"Failed to stop simulator: {exc}"}), 500
-        finally:
-            SIMULATOR_PROCESS = None
+            return jsonify({"ok": True, "stopped": True, "host": PROXY_HOST, "port": PROXY_PORT})
 
-        return jsonify({"ok": True, "stopped": True, "host": PROXY_HOST, "port": PROXY_PORT})
+        SIMULATOR_PROCESS = None
+        pid = _find_listening_pid(PROXY_PORT)
+        if not pid:
+            return jsonify({"ok": False, "error": "No local proxy process found listening on the configured port."}), 404
+
+        if not _can_signal_pid(pid):
+            return jsonify({"ok": False, "error": "Local proxy process exists but cannot be signaled by this Flask app."}), 403
+
+        stopped = _terminate_pid(pid)
+        if not stopped:
+            return jsonify({"ok": False, "error": f"Failed to stop local proxy process (PID {pid})."}), 500
+
+        return jsonify({"ok": True, "stopped": True, "host": PROXY_HOST, "port": PROXY_PORT, "pid": pid})
 
     @app.route("/api/workflow/check", methods=["POST"])
     def workflow_check():
