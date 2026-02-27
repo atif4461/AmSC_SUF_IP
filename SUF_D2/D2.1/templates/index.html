@@ -129,7 +129,7 @@
     </main>
 
     <div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content">
           <div class="modal-header">
             <h3 class="modal-title fs-5" id="configModalLabel">Configuration</h3>
@@ -137,27 +137,207 @@
           </div>
           <div class="modal-body">
             <form id="config-form" class="row g-3">
-              <div class="col-12">
-                <label for="config-name" class="form-label">Configuration Name</label>
+              <div class="col-12 d-flex flex-column flex-md-row align-items-md-center gap-2">
+                <label for="config-name" class="form-label mb-0 me-md-2">Configuration Name</label>
                 <input id="config-name" class="form-control" type="text" required />
               </div>
-              <div class="col-md-6">
-                <label for="source-site" class="form-label">Source Site</label>
-                <input id="source-site" class="form-control" type="text" placeholder="e.g., Site A" />
-              </div>
-              <div class="col-md-6">
-                <label for="target-site" class="form-label">Target HPC Site</label>
-                <input id="target-site" class="form-control" type="text" placeholder="e.g., Site B" />
-              </div>
+
               <div class="col-12">
-                <label for="notes" class="form-label">Notes</label>
-                <textarea id="notes" class="form-control" rows="3" placeholder="Short description"></textarea>
+                <fieldset class="data-source-box p-3 position-relative">
+                  <legend class="float-none w-auto px-2 mb-0">Data Source</legend>
+                  <button
+                    type="button"
+                    id="data-source-help-btn"
+                    class="btn btn-sm btn-outline-secondary rounded-circle p-0 data-source-help-btn"
+                    aria-label="Data Source Help"
+                  >
+                    ?
+                  </button>
+                  <div class="row g-3">
+                    <div class="col-md-3">
+                      <div class="form-check mb-2">
+                        <input
+                          class="form-check-input"
+                          type="radio"
+                          name="data-source-mode"
+                          id="data-source-live"
+                          value="live"
+                          checked
+                        />
+                        <label class="form-check-label" for="data-source-live">Live DAQ</label>
+                      </div>
+                      <div class="form-check">
+                        <input
+                          class="form-check-input"
+                          type="radio"
+                          name="data-source-mode"
+                          id="data-source-files"
+                          value="files"
+                        />
+                        <label class="form-check-label" for="data-source-files">File(s)</label>
+                      </div>
+                    </div>
+
+                    <div class="col-md-9">
+                      <div id="live-daq-panel" class="row g-3">
+                        <div class="col-md-6">
+                          <label for="daq-system" class="form-label">System</label>
+                          <select id="daq-system" class="form-select">
+                            <option value="coda-et">CODA (ET)</option>
+                            <option value="glrs">GLRS</option>
+                            <option value="ddaq">dDAQ</option>
+                          </select>
+                        </div>
+
+                        <div id="coda-settings" class="col-12">
+                          <div class="row g-3">
+                            <div class="col-md-8">
+                              <label for="et-host" class="form-label">ET Host</label>
+                              <input id="et-host" class="form-control" type="text" placeholder="hostname or IP" />
+                            </div>
+                            <div class="col-md-4">
+                              <label for="et-port" class="form-label">Port</label>
+                              <input id="et-port" class="form-control" type="text" placeholder="11111" />
+                            </div>
+                            <div class="col-md-8">
+                              <label for="station-name" class="form-label">Station Name (optional)</label>
+                              <input
+                                id="station-name"
+                                class="form-control"
+                                type="text"
+                                placeholder="station name"
+                              />
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                              <div class="form-check pb-2">
+                                <input id="blocking" class="form-check-input" type="checkbox" />
+                                <label class="form-check-label" for="blocking">Blocking</label>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div id="daq-unsupported-message" class="col-12 d-none">
+                          <div class="alert alert-warning mb-0" role="alert">
+                            The <span id="unsupported-system-name">GLRS</span> DAQ system is currently unsupported.
+                          </div>
+                        </div>
+                      </div>
+
+                      <div id="files-panel" class="row g-3 d-none">
+                        <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+                          <button type="button" id="data-catalog-btn" class="btn btn-outline-primary btn-sm">
+                            AmSC Data Catalog ...
+                          </button>
+                          <span class="fw-semibold">Data ID:</span>
+                          <span id="data-id-label" class="text-secondary">-</span>
+                        </div>
+
+                        <div class="col-12">
+                          <button type="button" id="data-movement-btn" class="btn btn-outline-primary btn-sm">
+                            AmSC Data Movement ...
+                          </button>
+                        </div>
+
+                        <div class="col-md-5">
+                          <label for="files-path" class="form-label">Directory Path</label>
+                          <input id="files-path" class="form-control" type="text" />
+                        </div>
+                        <div class="col-md-5">
+                          <label for="files-regex" class="form-label">Files</label>
+                          <input id="files-regex" class="form-control" type="text" />
+                        </div>
+                        <div class="col-md-2 d-flex flex-column align-items-stretch justify-content-end gap-2">
+                          <button type="button" id="browse-btn" class="btn btn-outline-secondary w-100 text-nowrap">
+                            Choose ...
+                          </button>
+                        </div>
+
+                        <div class="col-12">
+                          <div class="form-check">
+                            <input id="files-loop" class="form-check-input" type="checkbox" />
+                            <label class="form-check-label" for="files-loop">Loop</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </fieldset>
               </div>
             </form>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
             <button type="button" id="save-config-btn" class="btn btn-primary">Save Configuration</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="dataSourceHelpModal"
+      tabindex="-1"
+      aria-labelledby="dataSourceHelpModalLabel"
+      aria-hidden="true"
+      data-bs-backdrop="false"
+      data-bs-focus="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="dataSourceHelpModalLabel">Data Source Help</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>
+              Use <strong>AmSC Data Catalog ...</strong> to locate an appropriate data set for this configuration.
+            </p>
+            <p>
+              Use <strong>AmSC Data Movement ...</strong> to initiate transfer of the selected data set to a local disk.
+            </p>
+            <p>
+              <strong>Directory Path</strong> and <strong>Files</strong> define which input file(s) are used by the workflow.
+              The <strong>Files</strong> field may contain <code>*</code> wildcards to match files in the given directory path.
+            </p>
+            <p class="mb-0">
+              Enabling <strong>Loop</strong> causes the file set to be resent repeatedly until the workflow is stopped.
+              This is useful for debugging and testing with an endless stream of data.
+            </p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="filesystemModal" tabindex="-1" aria-labelledby="filesystemModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-5" id="filesystemModalLabel">Filesystem Browser</h3>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+              <button type="button" id="fs-home-btn" class="btn btn-sm btn-outline-secondary">Home</button>
+              <button type="button" id="fs-up-btn" class="btn btn-sm btn-outline-secondary">Up</button>
+              <button type="button" id="fs-refresh-btn" class="btn btn-sm btn-outline-secondary">Refresh</button>
+              <span class="fw-semibold ms-md-2">Path:</span>
+              <span id="fs-current-path" class="text-break text-secondary"></span>
+            </div>
+
+            <div id="fs-error" class="alert alert-danger d-none py-2" role="alert"></div>
+
+            <div class="fs-browser-list border rounded-3">
+              <ul id="fs-items" class="list-group list-group-flush"></ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <span id="fs-selection-summary" class="me-auto text-secondary small"></span>
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" id="fs-select-btn" class="btn btn-primary">Select</button>
           </div>
         </div>
       </div>

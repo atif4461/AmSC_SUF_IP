@@ -58,6 +58,36 @@ body {
   background-color: rgba(13, 202, 240, 0.15);
 }
 
+.data-source-box {
+  border: 1px solid rgba(45, 59, 90, 0.2);
+  border-radius: 10px;
+}
+
+.data-source-box > legend {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #33405f;
+}
+
+.data-source-help-btn {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.6rem;
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.fs-browser-list {
+  max-height: 340px;
+  overflow: auto;
+  background: #fff;
+}
+
+.fs-browser-list .list-group-item {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
 @media (max-width: 767px) {
   .hero-mark {
     width: 72px;
