@@ -558,6 +558,148 @@ def create_app() -> Flask:
 
         return jsonify(reply)
 
+    @app.route("/api/workflow/check-files", methods=["POST"])
+    def workflow_check_files():
+        payload = request.get_json(silent=True) or {}
+
+        data_source = payload.get("dataSource") if isinstance(payload.get("dataSource"), dict) else None
+        files_section = data_source.get("files") if isinstance(data_source, dict) and isinstance(data_source.get("files"), dict) else None
+
+        path_value = ""
+        files_value = []
+
+        if isinstance(files_section, dict):
+            path_value = str(files_section.get("path", "")).strip()
+            raw_files = files_section.get("files", [])
+            files_value = raw_files if isinstance(raw_files, list) else []
+        else:
+            path_value = str(payload.get("path", "")).strip()
+            raw_files = payload.get("files", [])
+            files_value = raw_files if isinstance(raw_files, list) else []
+
+        if not path_value:
+            return jsonify({"ok": False, "status": "failure", "error": "Missing files path."}), 400
+
+        if not files_value:
+            return jsonify({"ok": False, "status": "failure", "error": "Missing files list."}), 400
+
+        try:
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/check-files",
+                payload={"path": path_value, "files": files_value},
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "status": "failure", "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "status": "failure", "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
+
+    @app.route("/api/workflow/check-ejfat-control-plane", methods=["POST"])
+    def workflow_check_ejfat_control_plane():
+        payload = request.get_json(silent=True) or {}
+
+        data_transport = payload.get("dataTransport") if isinstance(payload.get("dataTransport"), dict) else None
+        ejfat_section = (
+            data_transport.get("ejfat")
+            if isinstance(data_transport, dict) and isinstance(data_transport.get("ejfat"), dict)
+            else None
+        )
+
+        if not isinstance(ejfat_section, dict):
+            direct_ejfat = payload.get("ejfat")
+            ejfat_section = direct_ejfat if isinstance(direct_ejfat, dict) else None
+
+        if not isinstance(ejfat_section, dict):
+            return jsonify({"ok": False, "status": "failure", "error": "Missing EJFAT settings."}), 400
+
+        transport_type = ""
+        if isinstance(data_transport, dict):
+            transport_type = str(data_transport.get("type", "")).strip()
+        if not transport_type:
+            transport_type = str(payload.get("transportType", "")).strip()
+
+        control_plane = ejfat_section.get("controlPlane") if isinstance(ejfat_section.get("controlPlane"), dict) else {}
+        data_plane = ejfat_section.get("dataPlane") if isinstance(ejfat_section.get("dataPlane"), dict) else {}
+
+        proxy_payload = {
+            "transportType": transport_type,
+            "ejfat": {
+                "loadBalancer": ejfat_section.get("loadBalancer", ""),
+                "controlPlane": {
+                    "ipv4": control_plane.get("ipv4", ""),
+                    "ipv6": control_plane.get("ipv6", ""),
+                    "ports": control_plane.get("ports", ""),
+                },
+                "dataPlane": {
+                    "ipv4": data_plane.get("ipv4", ""),
+                    "ipv6": data_plane.get("ipv6", ""),
+                    "ports": data_plane.get("ports", ""),
+                },
+            },
+        }
+
+        try:
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/check-ejfat-control-plane",
+                payload=proxy_payload,
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+                timeout_sec=10.0,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "status": "failure", "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "status": "failure", "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
+
+    @app.route("/api/workflow/check-hpc-farm", methods=["POST"])
+    def workflow_check_hpc_farm():
+        payload = request.get_json(silent=True) or {}
+
+        hpc_compute = payload.get("hpcCompute") if isinstance(payload.get("hpcCompute"), dict) else None
+        if not isinstance(hpc_compute, dict):
+            return jsonify({"ok": False, "status": "failure", "error": "Missing HPC Compute settings."}), 400
+
+        proxy_payload = {
+            "hpcCompute": {
+                "location": hpc_compute.get("location", ""),
+                "project": hpc_compute.get("project", ""),
+                "queue": hpc_compute.get("queue", ""),
+                "numJobs": hpc_compute.get("numJobs", ""),
+                "cpusPerJob": hpc_compute.get("cpusPerJob", ""),
+                "wholeNode": bool(hpc_compute.get("wholeNode", False)),
+                "memory": hpc_compute.get("memory", ""),
+                "time": hpc_compute.get("time", ""),
+                "container": hpc_compute.get("container", ""),
+                "model": hpc_compute.get("model", ""),
+            }
+        }
+
+        try:
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/check-hpc-farm",
+                payload=proxy_payload,
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+                timeout_sec=10.0,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "status": "failure", "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "status": "failure", "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
+
     @app.route("/api/workflow/run", methods=["POST"])
     def workflow_run():
         try:

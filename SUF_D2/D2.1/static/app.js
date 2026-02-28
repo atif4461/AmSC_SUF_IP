@@ -87,8 +87,17 @@
   const proxyStopModalEl = document.getElementById("proxyStopModal");
   const proxyStopMessage = document.getElementById("proxy-stop-message");
   const proxyStopSimulatorBtn = document.getElementById("proxy-stop-simulator-btn");
+  const fileCheckStatusModalEl = document.getElementById("fileCheckStatusModal");
+  const fileCheckStatusSummary = document.getElementById("file-check-status-summary");
+  const fileCheckStatusList = document.getElementById("file-check-status-list");
+  const hpcFarmStatusModalEl = document.getElementById("hpcFarmStatusModal");
+  const hpcFarmStatusSummary = document.getElementById("hpc-farm-status-summary");
+  const hpcFarmStatusList = document.getElementById("hpc-farm-status-list");
 
-  const componentRows = [...componentsBody.querySelectorAll("tr")];
+  let componentRows = [];
+  let currentWorkflowConfig = null;
+  let lastFileCheckStatus = null;
+  let lastHpcFarmStatus = null;
   let modalMode = "add";
   let fsCurrentDir = "";
   let fsParentDir = null;
@@ -97,6 +106,7 @@
   let resolveProxyStartPrompt = null;
   let resolveProxyStopPrompt = null;
   let proxyHeartbeatInFlight = false;
+  let lastProxyConnected = null;
 
   const defaultProxyHost = "127.0.0.1";
   const defaultProxyPort = 11096;
@@ -134,6 +144,88 @@
         configSelect.value = match.value;
       }
     }
+  };
+
+  const getSelectedConfigFile = () => {
+    const selectedOption = configSelect.options[configSelect.selectedIndex];
+    return selectedOption?.dataset?.file || selectedOption?.value || "";
+  };
+
+  const loadSelectedConfig = async () => {
+    const selectedFile = getSelectedConfigFile();
+    if (!selectedFile) {
+      return null;
+    }
+
+    const response = await fetch(`/api/config/load?file=${encodeURIComponent(selectedFile)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to load configuration");
+    }
+
+    return payload.config || null;
+  };
+
+  const renderWorkflowComponents = (config = null) => {
+    const dataSource = config?.dataSource || {};
+    const dataTransport = config?.dataTransport || {};
+    const components = [];
+
+    if (dataSource.mode === "files") {
+      const files = dataSource.files || {};
+      const path = files.path || "Path not set";
+      components.push({
+        id: "file-check",
+        name: "File Check",
+        location: path,
+        role: "Validate all configured files/patterns exist",
+      });
+    }
+
+    if (String(dataTransport.type || "").toLowerCase() === "ejfat") {
+      const ejfat = dataTransport.ejfat || {};
+      const controlPlane = ejfat.controlPlane || {};
+      const cpLocation = [controlPlane.ipv4, controlPlane.ipv6].filter(Boolean).join(" / ") || "Control plane endpoint";
+      components.push({
+        id: "ejfat-control-plane-check",
+        name: "EJFAT Control Plane Check",
+        location: cpLocation,
+        role: "Validate EJFAT control-plane REST connectivity",
+      });
+    }
+
+    const hpcCompute = config?.hpcCompute || {};
+    const hpcLocationValue = String(hpcCompute.location || "").trim();
+    if (hpcLocationValue) {
+      components.push({
+        id: "hpc-farm-check",
+        name: "HPC Farm Check",
+        location: hpcLocationValue,
+        role: "Validate HPC compute farm accessibility and capacity",
+      });
+    }
+
+    if (!components.length) {
+      componentsBody.innerHTML =
+        '<tr><td colspan="4" class="text-muted">No pre-launch components defined for this configuration yet.</td></tr>';
+      componentRows = [];
+      return;
+    }
+
+    componentsBody.innerHTML = components
+      .map(
+        (component) => `
+          <tr data-component-id="${escapeHtml(component.id)}" class="${component.id === "file-check" || component.id === "hpc-farm-check" ? "component-row-clickable" : ""}">
+            <td>${escapeHtml(component.name)}</td>
+            <td>${escapeHtml(component.location)}</td>
+            <td>${escapeHtml(component.role)}</td>
+            <td><span class="badge text-bg-secondary">Pending</span></td>
+          </tr>
+        `
+      )
+      .join("");
+
+    componentRows = [...componentsBody.querySelectorAll("tr[data-component-id]")];
   };
 
   const loadConfigList = async (selectedFile = "") => {
@@ -191,21 +283,15 @@
 
   const updateSelectedConfigSummary = async () => {
     const selectedOption = configSelect.options[configSelect.selectedIndex];
-    const selectedFile = selectedOption?.dataset?.file || selectedOption?.value || "";
 
-    if (!selectedFile) {
+    if (!getSelectedConfigFile()) {
       configSummary.textContent = "No configuration selected.";
       return;
     }
 
     try {
-      const response = await fetch(`/api/config/load?file=${encodeURIComponent(selectedFile)}`);
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Unable to load configuration");
-      }
-
-      const summary = summarizeConfiguration(payload.config || {});
+      const config = await loadSelectedConfig();
+      const summary = summarizeConfiguration(config || {});
       configSummary.textContent = summary;
       configSummary.title = summary;
     } catch {
@@ -221,6 +307,8 @@
   const proxyConnectModal = new bootstrap.Modal(proxyConnectModalEl);
   const proxyInfoModal = new bootstrap.Modal(proxyInfoModalEl);
   const proxyStopModal = new bootstrap.Modal(proxyStopModalEl);
+  const fileCheckStatusModal = new bootstrap.Modal(fileCheckStatusModalEl);
+  const hpcFarmStatusModal = new bootstrap.Modal(hpcFarmStatusModalEl);
 
   const buildConfigurationPayload = () => {
     const dataSourceMode = dataSourceFiles.checked ? "files" : "live";
@@ -295,6 +383,16 @@
     proxyConnectionLabel.classList.add(connected ? "text-bg-success" : "text-bg-danger");
   };
 
+  const invalidateCheckedComponents = () => {
+    if (!componentRows.length) {
+      return;
+    }
+
+    updateRowStatuses("pending");
+    lastFileCheckStatus = null;
+    lastHpcFarmStatus = null;
+  };
+
   const fetchProxyStatus = async () => {
     try {
       const response = await fetch("/api/proxy/status");
@@ -314,6 +412,10 @@
       };
 
       setProxyConnectionLabel(status.connected);
+      if (lastProxyConnected === true && !status.connected) {
+        invalidateCheckedComponents();
+      }
+      lastProxyConnected = status.connected;
       return status;
     } catch {
       const status = {
@@ -326,6 +428,10 @@
         localPid: null,
       };
       setProxyConnectionLabel(false);
+      if (lastProxyConnected === true) {
+        invalidateCheckedComponents();
+      }
+      lastProxyConnected = false;
       return status;
     }
   };
@@ -333,6 +439,115 @@
   const showProxyInfo = (message) => {
     proxyInfoMessage.textContent = message;
     proxyInfoModal.show();
+  };
+
+  const formatBytes = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      return "unknown";
+    }
+
+    if (numeric < 1024) {
+      return `${numeric} B`;
+    }
+
+    const units = ["KB", "MB", "GB", "TB"];
+    let size = numeric;
+    let idx = -1;
+    while (size >= 1024 && idx < units.length - 1) {
+      size /= 1024;
+      idx += 1;
+    }
+
+    return `${size.toFixed(2)} ${units[idx]}`;
+  };
+
+  const renderFileCheckStatusModal = () => {
+    if (!lastFileCheckStatus) {
+      fileCheckStatusSummary.textContent = "No file-check response received yet.";
+      fileCheckStatusList.innerHTML =
+        '<li class="list-group-item text-muted">Run Check components to receive a file-check status.</li>';
+      return;
+    }
+
+    const ok = lastFileCheckStatus.ok === true;
+    const path = lastFileCheckStatus.path || "(not provided)";
+    const found = Array.isArray(lastFileCheckStatus.found) ? lastFileCheckStatus.found : [];
+    const missing = Array.isArray(lastFileCheckStatus.missing) ? lastFileCheckStatus.missing : [];
+    const foundCount = Number.isFinite(Number(lastFileCheckStatus.foundCount))
+      ? Number(lastFileCheckStatus.foundCount)
+      : found.length;
+    const missingCount = Number.isFinite(Number(lastFileCheckStatus.missingCount))
+      ? Number(lastFileCheckStatus.missingCount)
+      : missing.length;
+
+    fileCheckStatusSummary.textContent = `${ok ? "Success" : "Failure"} | Path: ${path} | Found: ${foundCount} | Missing: ${missingCount}`;
+
+    const foundRows = found
+      .map((entry) => {
+        const file = escapeHtml(String(entry.file || ""));
+        const size = escapeHtml(formatBytes(entry.size));
+        const modified = escapeHtml(String(entry.modifiedTime || "unknown"));
+        return `<li class="list-group-item">
+          <div class="fw-semibold text-break">${file}</div>
+          <div class="small text-secondary">Size: ${size} | Modified: ${modified}</div>
+        </li>`;
+      })
+      .join("");
+
+    const missingRows = missing
+      .map((item) => {
+        const safeItem = escapeHtml(String(item));
+        return `<li class="list-group-item list-group-item-warning">
+          <div class="fw-semibold text-break">Missing: ${safeItem}</div>
+        </li>`;
+      })
+      .join("");
+
+    const content = `${foundRows}${missingRows}`;
+    fileCheckStatusList.innerHTML = content || '<li class="list-group-item text-muted">No files were returned by the proxy.</li>';
+  };
+
+  const renderHpcFarmStatusModal = () => {
+    if (!lastHpcFarmStatus) {
+      hpcFarmStatusSummary.textContent = "No HPC farm response received yet.";
+      hpcFarmStatusList.innerHTML =
+        '<li class="list-group-item text-muted">Run Check components to receive an HPC farm status.</li>';
+      return;
+    }
+
+    const ok = lastHpcFarmStatus.ok === true;
+    const farm = lastHpcFarmStatus.farm || {};
+    const checked = lastHpcFarmStatus.checked || {};
+
+    hpcFarmStatusSummary.textContent = `${ok ? "Success" : "Failure"} | Farm: ${farm.name || "unknown"} | Location: ${farm.location || checked.location || "unknown"}`;
+
+    const rows = [
+      ["Nodes", farm.nodes],
+      ["Cores", farm.cores],
+      ["Job Slots", farm.jobSlots],
+      ["Running Jobs", farm.runningJobs],
+      ["Project", checked.project],
+      ["Queue", checked.queue],
+      ["Requested Jobs", checked.numJobs],
+      ["CPUs per Job", checked.cpusPerJob],
+      ["Whole Node", checked.wholeNode],
+      ["Memory", checked.memory],
+      ["Time", checked.time],
+      ["Container", checked.container],
+      ["Model", checked.model],
+    ];
+
+    hpcFarmStatusList.innerHTML = rows
+      .map(([label, value]) => {
+        const safeLabel = escapeHtml(String(label));
+        const safeValue = escapeHtml(String(value ?? ""));
+        return `<li class="list-group-item d-flex justify-content-between gap-3">
+          <span class="text-secondary">${safeLabel}</span>
+          <span class="fw-semibold text-break text-end">${safeValue || "-"}</span>
+        </li>`;
+      })
+      .join("");
   };
 
   const promptStartSimulator = (message) => {
@@ -721,37 +936,52 @@
     cancelBtn.disabled = !active;
   };
 
+  const applyBadgeState = (badge, state) => {
+    if (!badge) return;
+
+    badge.className = "badge";
+
+    if (state === "pending") {
+      badge.classList.add("text-bg-secondary");
+      badge.textContent = "Pending";
+    }
+
+    if (state === "checking") {
+      badge.classList.add("text-bg-warning");
+      badge.textContent = "Checking";
+    }
+
+    if (state === "ready") {
+      badge.classList.add("text-bg-success");
+      badge.textContent = "Ready";
+    }
+
+    if (state === "running") {
+      badge.classList.add("text-bg-primary");
+      badge.textContent = "Running";
+    }
+
+    if (state === "stopped") {
+      badge.classList.add("text-bg-danger");
+      badge.textContent = "Stopped";
+    }
+
+    if (state === "failed") {
+      badge.classList.add("text-bg-danger");
+      badge.textContent = "Failed";
+    }
+  };
+
+  const setComponentStatus = (componentId, state) => {
+    const row = componentsBody.querySelector(`tr[data-component-id="${componentId}"]`);
+    const badge = row?.querySelector(".badge");
+    applyBadgeState(badge, state);
+  };
+
   const updateRowStatuses = (state) => {
     componentRows.forEach((row) => {
       const badge = row.querySelector(".badge");
-      if (!badge) return;
-
-      badge.className = "badge";
-
-      if (state === "pending") {
-        badge.classList.add("text-bg-secondary");
-        badge.textContent = "Pending";
-      }
-
-      if (state === "checking") {
-        badge.classList.add("text-bg-warning");
-        badge.textContent = "Checking";
-      }
-
-      if (state === "ready") {
-        badge.classList.add("text-bg-success");
-        badge.textContent = "Ready";
-      }
-
-      if (state === "running") {
-        badge.classList.add("text-bg-primary");
-        badge.textContent = "Running";
-      }
-
-      if (state === "stopped") {
-        badge.classList.add("text-bg-danger");
-        badge.textContent = "Stopped";
-      }
+      applyBadgeState(badge, state);
     });
   };
 
@@ -827,32 +1057,143 @@
     bootstrap.Modal.getInstance(configModalEl)?.hide();
   });
 
-  continueBtn.addEventListener("click", () => {
+  continueBtn.addEventListener("click", async () => {
+    try {
+      currentWorkflowConfig = await loadSelectedConfig();
+    } catch (error) {
+      window.alert(error.message || "Unable to load configuration");
+      return;
+    }
+
+    renderWorkflowComponents(currentWorkflowConfig);
+    lastFileCheckStatus = null;
+    lastHpcFarmStatus = null;
     setWorkflowActive(true);
     updateRowStatuses("pending");
   });
 
   checkBtn.addEventListener("click", async () => {
+    if (!componentRows.length) {
+      showProxyInfo("No pre-launch components defined for this configuration.");
+      return;
+    }
+
     if (!(await ensureProxyConnection())) {
       return;
     }
 
     updateRowStatuses("checking");
+    let proxyResponded = false;
 
     try {
-      const response = await fetch("/api/workflow/check", { method: "POST" });
-      const payload = await response.json();
-      if (!response.ok || payload.ok === false) {
-        throw new Error(payload.error || "Pre-launch check failed.");
+      const usesFiles = currentWorkflowConfig?.dataSource?.mode === "files";
+      const usesEjfat = String(currentWorkflowConfig?.dataTransport?.type || "").toLowerCase() === "ejfat";
+      const usesHpc = Boolean(String(currentWorkflowConfig?.hpcCompute?.location || "").trim());
+      const componentErrors = [];
+
+      if (usesFiles) {
+        setComponentStatus("file-check", "checking");
+
+        const response = await fetch("/api/workflow/check-files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentWorkflowConfig || {}),
+        });
+        const payload = await response.json();
+        proxyResponded = true;
+        lastFileCheckStatus = payload;
+
+        if (!response.ok || payload.ok === false) {
+          setComponentStatus("file-check", "failed");
+          const missing = Array.isArray(payload.missing) ? payload.missing : [];
+          if (missing.length) {
+            componentErrors.push(`File Check failed. Missing files: ${missing.join(", ")}`);
+          } else {
+            componentErrors.push(payload.error || "File Check failed.");
+          }
+        } else {
+          setComponentStatus("file-check", "ready");
+        }
       }
 
-      window.setTimeout(() => updateRowStatuses("ready"), 350);
-      setProxyConnectionLabel(true);
+      if (usesEjfat) {
+        setComponentStatus("ejfat-control-plane-check", "checking");
+
+        const response = await fetch("/api/workflow/check-ejfat-control-plane", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentWorkflowConfig || {}),
+        });
+        const payload = await response.json();
+        proxyResponded = true;
+
+        if (!response.ok || payload.ok === false) {
+          setComponentStatus("ejfat-control-plane-check", "failed");
+          componentErrors.push(payload.error || "EJFAT control-plane check failed.");
+        } else {
+          setComponentStatus("ejfat-control-plane-check", "ready");
+        }
+      }
+
+      if (usesHpc) {
+        setComponentStatus("hpc-farm-check", "checking");
+
+        const response = await fetch("/api/workflow/check-hpc-farm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentWorkflowConfig || {}),
+        });
+        const payload = await response.json();
+        proxyResponded = true;
+        lastHpcFarmStatus = payload;
+
+        if (!response.ok || payload.ok === false) {
+          setComponentStatus("hpc-farm-check", "failed");
+          componentErrors.push(payload.error || "HPC farm check failed.");
+        } else {
+          setComponentStatus("hpc-farm-check", "ready");
+        }
+      }
+
+      if (!usesFiles && !usesEjfat && !usesHpc) {
+        const response = await fetch("/api/workflow/check", { method: "POST" });
+        const payload = await response.json();
+        proxyResponded = true;
+        if (!response.ok || payload.ok === false) {
+          throw new Error(payload.error || "Pre-launch check failed.");
+        }
+
+        window.setTimeout(() => updateRowStatuses("ready"), 350);
+      }
+
+      setProxyConnectionLabel(proxyResponded ? true : false);
+
+      if (componentErrors.length) {
+        throw new Error(componentErrors.join("\n"));
+      }
     } catch (error) {
-      setProxyConnectionLabel(false);
-      updateRowStatuses("pending");
+      if (!proxyResponded) {
+        setProxyConnectionLabel(false);
+      }
       showProxyInfo(error.message || "Pre-launch check failed.");
     }
+  });
+
+  componentsBody.addEventListener("click", (event) => {
+    const fileRow = event.target.closest('tr[data-component-id="file-check"]');
+    if (fileRow) {
+      renderFileCheckStatusModal();
+      fileCheckStatusModal.show();
+      return;
+    }
+
+    const hpcRow = event.target.closest('tr[data-component-id="hpc-farm-check"]');
+    if (!hpcRow) {
+      return;
+    }
+
+    renderHpcFarmStatusModal();
+    hpcFarmStatusModal.show();
   });
 
   runBtn.addEventListener("click", async () => {
@@ -1059,5 +1400,6 @@
   startProxyHeartbeat();
   resetModalFields();
   setBaselineFromCurrent();
+  renderWorkflowComponents(null);
   setWorkflowActive(false);
 })();

@@ -54,6 +54,14 @@ body {
   vertical-align: middle;
 }
 
+.component-row-clickable {
+  cursor: pointer;
+}
+
+.component-row-clickable:hover {
+  background: rgba(36, 68, 216, 0.06);
+}
+
 .badge.text-bg-info-subtle {
   background-color: rgba(13, 202, 240, 0.15);
 }
@@ -141,6 +149,18 @@ body {
 .fs-browser-list .list-group-item {
   padding-top: 0.55rem;
   padding-bottom: 0.55rem;
+}
+
+.file-check-status-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+}
+
+.file-check-status-scroll {
+  max-height: 58vh;
+  overflow: auto;
 }
 
 @media (max-width: 767px) {

@@ -113,28 +113,7 @@
               </thead>
               <tbody id="components-body">
                 <tr>
-                  <td>Instrument Gateway</td>
-                  <td>Site A</td>
-                  <td>Data Source + Packaging</td>
-                  <td><span class="badge text-bg-secondary">Pending</span></td>
-                </tr>
-                <tr>
-                  <td>Transfer Orchestrator</td>
-                  <td>Inter-site</td>
-                  <td>Scheduling + Routing</td>
-                  <td><span class="badge text-bg-secondary">Pending</span></td>
-                </tr>
-                <tr>
-                  <td>HPC Ingest Service</td>
-                  <td>Site B HPC</td>
-                  <td>Validation + Staging</td>
-                  <td><span class="badge text-bg-secondary">Pending</span></td>
-                </tr>
-                <tr>
-                  <td>Monitoring Pipeline</td>
-                  <td>Site B Ops</td>
-                  <td>Metrics + Alerts</td>
-                  <td><span class="badge text-bg-secondary">Pending</span></td>
+                  <td colspan="4" class="text-muted">No pre-launch components yet. Select a configuration and click Continue.</td>
                 </tr>
               </tbody>
             </table>
@@ -566,6 +545,54 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">No</button>
             <button type="button" id="proxy-stop-simulator-btn" class="btn btn-danger">Yes, stop simulator</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="fileCheckStatusModal"
+      tabindex="-1"
+      aria-labelledby="fileCheckStatusModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered file-check-status-modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-6" id="fileCheckStatusModalLabel">File Check Status</h3>
+            <div class="d-flex align-items-center gap-2 ms-2">
+              <button type="button" id="file-check-status-ok-btn" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+          </div>
+          <div class="modal-body file-check-status-scroll">
+            <div id="file-check-status-summary" class="small text-secondary mb-2"></div>
+            <ul id="file-check-status-list" class="list-group list-group-flush"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      class="modal fade"
+      id="hpcFarmStatusModal"
+      tabindex="-1"
+      aria-labelledby="hpcFarmStatusModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered file-check-status-modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h3 class="modal-title fs-6" id="hpcFarmStatusModalLabel">HPC Farm Check Status</h3>
+            <div class="d-flex align-items-center gap-2 ms-2">
+              <button type="button" class="btn btn-sm btn-primary" data-bs-dismiss="modal">OK</button>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+          </div>
+          <div class="modal-body file-check-status-scroll">
+            <div id="hpc-farm-status-summary" class="small text-secondary mb-2"></div>
+            <ul id="hpc-farm-status-list" class="list-group list-group-flush"></ul>
           </div>
         </div>
       </div>
