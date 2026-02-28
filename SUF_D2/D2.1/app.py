@@ -1,5 +1,7 @@
 from pathlib import Path
 import json
+import importlib
+import math
 import os
 import signal
 import subprocess
@@ -9,6 +11,12 @@ from urllib import error as url_error
 from urllib import request as url_request
 
 from flask import Flask, jsonify, render_template, request
+
+try:
+    _flask_sock_module = importlib.import_module("flask_sock")
+    Sock = getattr(_flask_sock_module, "Sock", None)
+except Exception:  # pragma: no cover - optional dependency
+    Sock = None
 
 
 PROXY_HOST = "127.0.0.1"
@@ -140,6 +148,163 @@ def _config_dir() -> Path:
     path = Path.cwd() / "configurations"
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _load_config_file(file_name: str) -> dict:
+    safe_name = Path(file_name).name
+    if not safe_name:
+        return {}
+
+    path = _config_dir() / safe_name
+    if not path.exists() or not path.is_file():
+        return {}
+
+    try:
+        parsed = _parse_yaml_text(path.read_text(encoding="utf-8"))
+    except OSError:
+        return {}
+
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _monitor_config_payload(config: dict) -> dict:
+    return {
+        "name": str(config.get("name", "AmSC D2.1 Demo")),
+        "dataSource": config.get("dataSource", {}),
+        "dataTransport": config.get("dataTransport", {}),
+        "hpcCompute": config.get("hpcCompute", {}),
+    }
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
+def _build_workflow_topology(config: dict) -> dict:
+    ds = config.get("dataSource", {}) if isinstance(config.get("dataSource"), dict) else {}
+    dt = config.get("dataTransport", {}) if isinstance(config.get("dataTransport"), dict) else {}
+    hpc = config.get("hpcCompute", {}) if isinstance(config.get("hpcCompute"), dict) else {}
+
+    worker_count = max(1, min(16, _safe_int(hpc.get("numJobs", 4), 4)))
+    transport_type = str(dt.get("type", "")).strip().lower()
+    ejfat_enabled = transport_type == "ejfat"
+
+    source_name = "File Source" if str(ds.get("mode", "")).strip() == "files" else "DAQ Source"
+    location = str(hpc.get("location", "HPC Farm")).strip() or "HPC Farm"
+
+    components = [
+        {"id": "source", "label": source_name, "group": "source"},
+    ]
+
+    if ejfat_enabled:
+        components.append({"id": "ejfat", "label": "EJFAT Load Balancer", "group": "transport"})
+
+    for i in range(worker_count):
+        components.append({"id": f"worker-{i + 1}", "label": f"Worker {i + 1}", "group": "worker"})
+
+    components.extend(
+        [
+            {"id": "aggregator", "label": "Histogram Aggregator", "group": "aggregate"},
+            {"id": "plotter", "label": "Plot Generator", "group": "plot"},
+            {"id": "viewer", "label": "Image Monitor", "group": "monitor"},
+            {"id": "hpc", "label": location, "group": "hpc"},
+        ]
+    )
+
+    links = []
+    if ejfat_enabled:
+        links.append({"source": "source", "target": "ejfat"})
+        links.extend({"source": "ejfat", "target": f"worker-{i + 1}"} for i in range(worker_count))
+    else:
+        links.extend({"source": "source", "target": f"worker-{i + 1}"} for i in range(worker_count))
+
+    links.extend({"source": f"worker-{i + 1}", "target": "aggregator"} for i in range(worker_count))
+    links.extend(
+        [
+            {"source": "aggregator", "target": "plotter"},
+            {"source": "plotter", "target": "viewer"},
+            {"source": "hpc", "target": "worker-1", "meta": "contains"},
+        ]
+    )
+
+    return {
+        "workerCount": worker_count,
+        "ejfatEnabled": ejfat_enabled,
+        "components": components,
+        "links": links,
+    }
+
+
+def _build_workflow_snapshot(config: dict) -> dict:
+    topology = _build_workflow_topology(config)
+    worker_count = topology["workerCount"]
+    now = time.time()
+
+    src_rate_gbps = 19.5 + 2.2 * math.sin(now / 4.0)
+    lb_efficiency = 0.96 + 0.02 * math.sin(now / 9.0)
+    split_rate = max(0.2, src_rate_gbps * lb_efficiency / worker_count)
+    running_jobs = max(1, min(worker_count, int(round(worker_count * (0.72 + 0.18 * (math.sin(now / 10.0) + 1) / 2.0)))))
+
+    hist_merge_rate = max(12.0, split_rate * worker_count * 76.0)
+    images_per_min = max(1.0, 8.0 + 3.0 * (math.sin(now / 7.0) + 1.0))
+    latest_image_age = max(0.3, 5.5 - 2.1 * (math.sin(now / 6.3) + 1.0) / 2.0)
+
+    node_stats = {
+        "source": {
+            "eventsPerSec": int(src_rate_gbps * 11500),
+            "rateGbps": round(src_rate_gbps, 2),
+        },
+        "aggregator": {
+            "histogramsPerSec": round(hist_merge_rate, 1),
+            "queueDepth": int(20 + 14 * (math.sin(now / 5.0) + 1.0)),
+        },
+        "plotter": {
+            "imagesPerMin": round(images_per_min, 1),
+            "lastRenderMs": int(120 + 65 * (math.sin(now / 3.5) + 1.0)),
+        },
+        "viewer": {
+            "latestImageAgeSec": round(latest_image_age, 1),
+            "viewers": int(2 + 4 * (math.sin(now / 11.0) + 1.0)),
+        },
+        "hpc": {
+            "runningJobs": running_jobs,
+            "totalWorkers": worker_count,
+            "busyPct": round((running_jobs / max(worker_count, 1)) * 100.0, 1),
+        },
+    }
+
+    if topology["ejfatEnabled"]:
+        node_stats["ejfat"] = {
+            "outStreams": worker_count,
+            "splitRateGbps": round(split_rate, 2),
+            "imbalancePct": round(0.4 + 1.8 * (math.sin(now / 8.0) + 1.0) / 2.0, 2),
+        }
+
+    for i in range(worker_count):
+        node_stats[f"worker-{i + 1}"] = {
+            "eventsPerSec": int(split_rate * 10800 * (0.93 + 0.12 * ((i % 3) / 3))),
+            "inferenceMs": round(7.5 + 3.2 * (math.sin(now / (2.7 + (i % 3))) + 1.0), 2),
+            "histFillPerSec": int(190 + 42 * (math.sin((now + i) / 4.8) + 1.0)),
+        }
+
+    return {
+        "timestamp": int(now * 1000),
+        "topology": {
+            "components": topology["components"],
+            "links": topology["links"],
+            "workerCount": worker_count,
+            "ejfatEnabled": topology["ejfatEnabled"],
+        },
+        "stats": {
+            "throughputGbps": round(src_rate_gbps, 2),
+            "runningJobs": running_jobs,
+            "workerCount": worker_count,
+        },
+        "nodeStats": node_stats,
+    }
 
 
 def _tail_text(path: Path, max_lines: int = 20) -> str:
@@ -275,6 +440,27 @@ def create_app() -> Flask:
     )
     app.config["TEMPLATES_AUTO_RELOAD"] = True
 
+    if Sock is not None:
+        sock = Sock(app)
+
+        @sock.route("/ws/workflow-status")
+        def workflow_status_ws(ws):  # pragma: no cover - runtime socket behavior
+            file_name = (request.args.get("file") or "").strip()
+            config = _load_config_file(file_name) if file_name else _load_config_file("amsc-d2-1-demo.yaml")
+
+            while True:
+                try:
+                    payload = {
+                        "ok": True,
+                        "config": _monitor_config_payload(config),
+                        "snapshot": _build_workflow_snapshot(config),
+                        "timestamp": int(time.time() * 1000),
+                    }
+                    ws.send(json.dumps(payload))
+                    time.sleep(0.75)
+                except Exception:
+                    break
+
     @app.route("/")
     def index():
         return render_template("index.html")
@@ -283,7 +469,47 @@ def create_app() -> Flask:
     def workflow_status():
         config_name = request.args.get("config", "Unknown Configuration")
         status = request.args.get("status", "Unknown")
-        return render_template("workflow_status.html", config_name=config_name, status=status)
+        selected_file = (request.args.get("file") or "").strip()
+
+        loaded_config = _load_config_file(selected_file) if selected_file else {}
+        fallback_file = ""
+        if not loaded_config:
+            fallback_file = "amsc-d2-1-demo.yaml"
+            loaded_config = _load_config_file(fallback_file)
+
+        if loaded_config:
+            config_name = str(loaded_config.get("name", config_name) or config_name)
+
+        status_bootstrap = {
+            "configName": config_name,
+            "status": status,
+            "configFile": selected_file or fallback_file,
+            "config": _monitor_config_payload(loaded_config),
+            "snapshot": _build_workflow_snapshot(loaded_config),
+            "websocketEnabled": bool(Sock is not None),
+        }
+
+        return render_template(
+            "workflow_status.html",
+            config_name=config_name,
+            status=status,
+            status_bootstrap_json=json.dumps(status_bootstrap),
+        )
+
+    @app.route("/api/workflow-status/snapshot")
+    def workflow_status_snapshot():
+        file_name = (request.args.get("file") or "").strip()
+        config = _load_config_file(file_name) if file_name else _load_config_file("amsc-d2-1-demo.yaml")
+
+        return jsonify(
+            {
+                "ok": True,
+                "configFile": file_name,
+                "config": _monitor_config_payload(config),
+                "snapshot": _build_workflow_snapshot(config),
+                "timestamp": int(time.time() * 1000),
+            }
+        )
 
     @app.route("/api/fs/list")
     def fs_list():

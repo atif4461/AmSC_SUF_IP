@@ -1217,7 +1217,8 @@
     setProxyConnectionLabel(true);
 
     const selectedName = configSelect.options[configSelect.selectedIndex]?.text || "Unknown Configuration";
-    const statusUrl = `/workflow-status?config=${encodeURIComponent(selectedName)}&status=${encodeURIComponent("Running")}`;
+    const selectedFile = configSelect.options[configSelect.selectedIndex]?.dataset?.file || "";
+    const statusUrl = `/workflow-status?config=${encodeURIComponent(selectedName)}&status=${encodeURIComponent("Running")}&file=${encodeURIComponent(selectedFile)}`;
 
     window.open(statusUrl, "_blank", "noopener,noreferrer");
     setWorkflowActive(false);

@@ -15,20 +15,61 @@
   <body>
     <div class="hero-bg"></div>
     <main class="container py-5">
-      <section class="card section-card">
-        <div class="card-body p-4 p-md-5">
-          <h1 class="h3 mb-4">Workflow Status</h1>
-          <dl class="row mb-0">
-            <dt class="col-sm-3">Configuration</dt>
-            <dd class="col-sm-9">{{ config_name }}</dd>
-
-            <dt class="col-sm-3">Status</dt>
-            <dd class="col-sm-9">
+      <section class="card section-card mb-3">
+        <div class="card-body p-4 pb-3 p-md-5 pb-md-4">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div>
+              <h1 class="h3 mb-1">Workflow Status Monitor</h1>
+              <div class="small text-secondary">
+                Configuration: <span class="fw-semibold">{{ config_name }}</span>
+              </div>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
               <span class="badge text-bg-primary">{{ status }}</span>
-            </dd>
-          </dl>
+              <span id="monitor-connection-badge" class="badge text-bg-secondary">Live: Connecting…</span>
+            </div>
+          </div>
+
+          <div class="row g-2 mt-3">
+            <div class="col-6 col-md-3">
+              <div class="border rounded-3 bg-white p-2 h-100">
+                <div class="small text-secondary">Throughput</div>
+                <div id="stat-throughput" class="fw-semibold">--</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded-3 bg-white p-2 h-100">
+                <div class="small text-secondary">Worker Jobs</div>
+                <div id="stat-jobs" class="fw-semibold">--</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded-3 bg-white p-2 h-100">
+                <div class="small text-secondary">Workers</div>
+                <div id="stat-workers" class="fw-semibold">--</div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="border rounded-3 bg-white p-2 h-100">
+                <div class="small text-secondary">Last Update</div>
+                <div id="stat-updated" class="fw-semibold">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section-card">
+        <div class="card-body p-2 p-md-3">
+          <div id="workflow-monitor-canvas" class="workflow-monitor-canvas"></div>
         </div>
       </section>
     </main>
+
+    <script>
+      window.WORKFLOW_STATUS_BOOTSTRAP = {{ status_bootstrap_json|safe }};
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script src="{{ url_for('static', filename='workflow_status.js') }}"></script>
   </body>
 </html>
