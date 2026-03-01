@@ -12,10 +12,12 @@
   }
 
   const svg = d3.select(canvas).append("svg").attr("class", "workflow-monitor-svg");
+  const facilityLayer = svg.append("g").attr("class", "facility-layer");
   const linkLayer = svg.append("g").attr("class", "link-layer");
   const nodeLayer = svg.append("g").attr("class", "node-layer");
 
   let currentSnapshot = bootstrap.snapshot || null;
+  let currentConfig = bootstrap.config || {};
   let ws = null;
   let pollTimer = null;
 
@@ -46,21 +48,38 @@
     const workerNodes = components.filter((c) => c.group === "worker");
 
     const map = new Map();
-    const centerY = height * 0.5;
+    const centerY = height * 0.46;
+
+    const sourceRegion = { x: width * 0.03, y: height * 0.08, w: width * 0.216, h: height * 0.84, label: "Data Source: BNL" };
+    const transportRegion = {
+      x: width * 0.28,
+      y: height * 0.08,
+      w: width * 0.18,
+      h: height * 0.84,
+      label: "Data Transport: ESnet",
+    };
+    const hpcLocation = String(currentConfig?.hpcCompute?.location || "HPC").trim() || "HPC";
+    const hpcRegion = {
+      x: width * 0.48,
+      y: height * 0.08,
+      w: width * 0.49,
+      h: height * 0.84,
+      label: `HPC: ${hpcLocation}`,
+    };
 
     const source = components.find((c) => c.id === "source");
-    if (source) map.set(source.id, { ...source, x: width * 0.08, y: centerY });
+    if (source) map.set(source.id, { ...source, x: sourceRegion.x + sourceRegion.w * 0.46, y: height * 0.28 });
 
     const ejfat = components.find((c) => c.id === "ejfat");
-    if (ejfat) map.set(ejfat.id, { ...ejfat, x: width * 0.24, y: centerY });
+    if (ejfat) map.set(ejfat.id, { ...ejfat, x: transportRegion.x + transportRegion.w * 0.5, y: centerY });
 
-    const workerStartX = ejfat ? width * 0.42 : width * 0.28;
-    const workerEndX = width * 0.68;
+    const workerStartX = hpcRegion.x + hpcRegion.w * 0.12;
+    const workerEndX = hpcRegion.x + hpcRegion.w * 0.58;
     const workerCols = Math.max(2, Math.min(4, Math.ceil(Math.sqrt(workerNodes.length))));
     const workerRows = Math.max(1, Math.ceil(workerNodes.length / workerCols));
     const xGap = workerCols > 1 ? (workerEndX - workerStartX) / (workerCols - 1) : 0;
-    const yStart = height * 0.2;
-    const yEnd = height * 0.8;
+    const yStart = hpcRegion.y + hpcRegion.h * 0.18;
+    const yEnd = hpcRegion.y + hpcRegion.h * 0.74;
     const yGap = workerRows > 1 ? (yEnd - yStart) / (workerRows - 1) : 0;
 
     workerNodes.forEach((node, i) => {
@@ -74,18 +93,16 @@
     });
 
     const aggregator = components.find((c) => c.id === "aggregator");
-    if (aggregator) map.set(aggregator.id, { ...aggregator, x: width * 0.78, y: height * 0.35 });
+    if (aggregator) map.set(aggregator.id, { ...aggregator, x: hpcRegion.x + hpcRegion.w * 0.78, y: hpcRegion.y + hpcRegion.h * 0.28 });
 
     const plotter = components.find((c) => c.id === "plotter");
-    if (plotter) map.set(plotter.id, { ...plotter, x: width * 0.9, y: height * 0.35 });
+    if (plotter) map.set(plotter.id, { ...plotter, x: hpcRegion.x + hpcRegion.w * 0.78, y: hpcRegion.y + hpcRegion.h * 0.82 });
 
     const viewer = components.find((c) => c.id === "viewer");
-    if (viewer) map.set(viewer.id, { ...viewer, x: width * 0.9, y: height * 0.65 });
-
-    const hpc = components.find((c) => c.id === "hpc");
-    if (hpc) map.set(hpc.id, { ...hpc, x: width * 0.78, y: height * 0.65 });
+    if (viewer) map.set(viewer.id, { ...viewer, x: sourceRegion.x + sourceRegion.w * 0.52, y: sourceRegion.y + sourceRegion.h * 0.82 });
 
     return {
+      facilities: [sourceRegion, transportRegion, hpcRegion],
       nodes: [...map.values()],
       links: links
         .map((l) => {
@@ -106,8 +123,31 @@
     if (node.group === "aggregate") return [`${stats.histogramsPerSec || 0} hist/s`, `Q=${stats.queueDepth || 0}`];
     if (node.group === "plot") return [`${stats.imagesPerMin || 0} img/min`, `${stats.lastRenderMs || 0} ms`];
     if (node.group === "monitor") return [`${stats.latestImageAgeSec || 0} s age`, `${stats.viewers || 0} viewers`];
-    if (node.group === "hpc") return [`jobs ${stats.runningJobs || 0}/${stats.totalWorkers || 0}`, `${stats.busyPct || 0}% busy`];
     return ["--"];
+  };
+
+  const nodeBoxSize = (node) => {
+    if (node.group === "worker" || node.group === "aggregate" || node.group === "plot") {
+      return { width: 128, height: 58 };
+    }
+    return { width: 158, height: 64 };
+  };
+
+  const linkPath = (link) => {
+    const sx = link.sourceNode.x;
+    const sy = link.sourceNode.y;
+    const tx = link.targetNode.x;
+    const ty = link.targetNode.y;
+
+    if (link.source === "plotter" && link.target === "viewer") {
+      const c1x = sx;
+      const c1y = sy + 120;
+      const c2x = tx + 150;
+      const c2y = ty + 70;
+      return `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${tx} ${ty}`;
+    }
+
+    return `M ${sx} ${sy} L ${tx} ${ty}`;
   };
 
   const render = (snapshot) => {
@@ -118,23 +158,47 @@
 
     svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", height);
 
-    const { nodes, links } = buildLayout(snapshot, width, height);
+    const { facilities, nodes, links } = buildLayout(snapshot, width, height);
     const stats = snapshot?.nodeStats || {};
+    const workerCount = Number(snapshot?.topology?.workerCount || 1);
+    const downstreamWidth = 2.4;
 
-    const linkSel = linkLayer.selectAll("line.flow-link").data(links, (d) => `${d.source}->${d.target}`);
+    const facilitySel = facilityLayer.selectAll("g.facility").data(facilities, (d) => d.label);
+    const facilityEnter = facilitySel.join(
+      (enter) => {
+        const g = enter.append("g").attr("class", "facility");
+        g.append("rect").attr("class", "facility-box").attr("rx", 14).attr("ry", 14);
+        g.append("text").attr("class", "facility-label");
+        return g;
+      },
+      (update) => update,
+      (exit) => exit.remove()
+    );
+
+    facilityEnter.select("rect").attr("x", (d) => d.x).attr("y", (d) => d.y).attr("width", (d) => d.w).attr("height", (d) => d.h);
+    facilityEnter
+      .select("text")
+      .attr("x", (d) => d.x + 10)
+      .attr("y", (d) => d.y + 22)
+      .text((d) => d.label);
+
+    const linkSel = linkLayer.selectAll("path.flow-link").data(links, (d) => `${d.source}->${d.target}`);
     linkSel
-      .join((enter) => enter.append("line").attr("class", "flow-link"), (update) => update, (exit) => exit.remove())
-      .attr("x1", (d) => d.sourceNode.x)
-      .attr("y1", (d) => d.sourceNode.y)
-      .attr("x2", (d) => d.targetNode.x)
-      .attr("y2", (d) => d.targetNode.y)
+      .join((enter) => enter.append("path").attr("class", "flow-link").attr("fill", "none"), (update) => update, (exit) => exit.remove())
+      .attr("d", (d) => linkPath(d))
+      .style("stroke-width", (d) => {
+        if (d.source === "source" && d.target === "ejfat") {
+          return downstreamWidth * (workerCount / 2);
+        }
+        return downstreamWidth;
+      })
       .classed("flow-link-meta", (d) => d.meta === "contains");
 
     const nodeSel = nodeLayer.selectAll("g.wf-node").data(nodes, (d) => d.id);
     const nodeEnter = nodeSel.join(
       (enter) => {
         const g = enter.append("g").attr("class", "wf-node");
-        g.append("rect").attr("rx", 10).attr("ry", 10).attr("width", 158).attr("height", 64).attr("x", -79).attr("y", -32);
+        g.append("rect").attr("rx", 10).attr("ry", 10);
         g.append("text").attr("class", "wf-node-title").attr("text-anchor", "middle").attr("y", -10);
         g.append("text").attr("class", "wf-node-metric").attr("text-anchor", "middle").attr("y", 8);
         g.append("text").attr("class", "wf-node-metric").attr("text-anchor", "middle").attr("y", 23);
@@ -145,7 +209,13 @@
     );
 
     nodeEnter.attr("transform", (d) => `translate(${d.x},${d.y})`);
-    nodeEnter.select("rect").attr("class", (d) => `wf-node-box wf-node-${d.group}`);
+    nodeEnter
+      .select("rect")
+      .attr("class", (d) => `wf-node-box wf-node-${d.group}`)
+      .attr("width", (d) => nodeBoxSize(d).width)
+      .attr("height", (d) => nodeBoxSize(d).height)
+      .attr("x", (d) => -nodeBoxSize(d).width / 2)
+      .attr("y", (d) => -nodeBoxSize(d).height / 2);
     nodeEnter.select("text.wf-node-title").text((d) => d.label);
 
     nodeEnter.selectAll("text.wf-node-metric").each(function (d, i) {
@@ -162,6 +232,9 @@
 
   const handleIncoming = (payload) => {
     if (!payload || !payload.snapshot) return;
+    if (payload.config) {
+      currentConfig = payload.config;
+    }
     render(payload.snapshot);
   };
 

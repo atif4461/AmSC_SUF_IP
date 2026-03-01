@@ -188,13 +188,11 @@ def _build_workflow_topology(config: dict) -> dict:
     dt = config.get("dataTransport", {}) if isinstance(config.get("dataTransport"), dict) else {}
     hpc = config.get("hpcCompute", {}) if isinstance(config.get("hpcCompute"), dict) else {}
 
-    worker_count = max(1, min(16, _safe_int(hpc.get("numJobs", 4), 4)))
+    worker_count = max(1, _safe_int(hpc.get("numJobs", 4), 4))
     transport_type = str(dt.get("type", "")).strip().lower()
     ejfat_enabled = transport_type == "ejfat"
 
     source_name = "File Source" if str(ds.get("mode", "")).strip() == "files" else "DAQ Source"
-    location = str(hpc.get("location", "HPC Farm")).strip() or "HPC Farm"
-
     components = [
         {"id": "source", "label": source_name, "group": "source"},
     ]
@@ -207,10 +205,9 @@ def _build_workflow_topology(config: dict) -> dict:
 
     components.extend(
         [
-            {"id": "aggregator", "label": "Histogram Aggregator", "group": "aggregate"},
+            {"id": "aggregator", "label": "Aggregator", "group": "aggregate"},
             {"id": "plotter", "label": "Plot Generator", "group": "plot"},
-            {"id": "viewer", "label": "Image Monitor", "group": "monitor"},
-            {"id": "hpc", "label": location, "group": "hpc"},
+            {"id": "viewer", "label": "Monitoring: Hydra", "group": "monitor"},
         ]
     )
 
@@ -226,7 +223,6 @@ def _build_workflow_topology(config: dict) -> dict:
         [
             {"source": "aggregator", "target": "plotter"},
             {"source": "plotter", "target": "viewer"},
-            {"source": "hpc", "target": "worker-1", "meta": "contains"},
         ]
     )
 
@@ -268,11 +264,6 @@ def _build_workflow_snapshot(config: dict) -> dict:
         "viewer": {
             "latestImageAgeSec": round(latest_image_age, 1),
             "viewers": int(2 + 4 * (math.sin(now / 11.0) + 1.0)),
-        },
-        "hpc": {
-            "runningJobs": running_jobs,
-            "totalWorkers": worker_count,
-            "busyPct": round((running_jobs / max(worker_count, 1)) * 100.0, 1),
         },
     }
 

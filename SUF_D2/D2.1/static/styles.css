@@ -175,6 +175,18 @@ body {
   display: block;
 }
 
+.facility-box {
+  fill: rgba(255, 255, 255, 0.45);
+  stroke: rgba(46, 62, 99, 0.2);
+  stroke-width: 1px;
+}
+
+.facility-label {
+  font-size: 12px;
+  font-weight: 700;
+  fill: #33476b;
+}
+
 .flow-link {
   stroke: #2660d8;
   stroke-width: 2.4px;
