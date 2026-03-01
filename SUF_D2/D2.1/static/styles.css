@@ -201,6 +201,14 @@ body {
   opacity: 0.45;
 }
 
+.flow-link.flow-link-inactive {
+  stroke: #c3cad6 !important;
+  stroke-width: 2px !important;
+  stroke-dasharray: none !important;
+  animation: none !important;
+  opacity: 1;
+}
+
 @keyframes ants {
   to {
     stroke-dashoffset: -30;
@@ -249,6 +257,14 @@ body {
 .wf-node-metric {
   font-size: 10px;
   fill: #344769;
+}
+
+.workflow-monitor-svg.workflow-stopped .wf-node-title {
+  fill: #8a93a6;
+}
+
+.workflow-monitor-svg.workflow-stopped .wf-node-metric {
+  fill: #8a93a6;
 }
 
 @media (max-width: 767px) {

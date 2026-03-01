@@ -6,6 +6,9 @@
   const statJobs = document.getElementById("stat-jobs");
   const statWorkers = document.getElementById("stat-workers");
   const statUpdated = document.getElementById("stat-updated");
+  const stopWorkflowBtn = document.getElementById("stop-workflow-btn");
+  const workflowSummaryBody = document.getElementById("workflow-summary-body");
+  const workflowSummaryModalEl = document.getElementById("workflowSummaryModal");
 
   if (!canvas) {
     return;
@@ -20,6 +23,10 @@
   let currentConfig = bootstrap.config || {};
   let ws = null;
   let pollTimer = null;
+  let workflowStopped = false;
+
+  const workflowSummaryModal =
+    workflowSummaryModalEl && window.bootstrap ? new window.bootstrap.Modal(workflowSummaryModalEl) : null;
 
   const setConnectionBadge = (state, text) => {
     badge.classList.remove("text-bg-secondary", "text-bg-success", "text-bg-warning", "text-bg-danger");
@@ -33,6 +40,19 @@
       badge.classList.add("text-bg-secondary");
     }
     badge.textContent = text;
+  };
+
+  const setWorkflowToggleButton = () => {
+    if (!stopWorkflowBtn) return;
+
+    stopWorkflowBtn.classList.remove("btn-danger", "btn-success", "btn-outline-danger", "btn-outline-success");
+    if (workflowStopped) {
+      stopWorkflowBtn.classList.add("btn-success");
+      stopWorkflowBtn.textContent = "Start Workflow";
+    } else {
+      stopWorkflowBtn.classList.add("btn-danger");
+      stopWorkflowBtn.textContent = "Stop Workflow";
+    }
   };
 
   const formatUpdated = (ms) => {
@@ -93,10 +113,10 @@
     });
 
     const aggregator = components.find((c) => c.id === "aggregator");
-    if (aggregator) map.set(aggregator.id, { ...aggregator, x: hpcRegion.x + hpcRegion.w * 0.78, y: hpcRegion.y + hpcRegion.h * 0.28 });
+    if (aggregator) map.set(aggregator.id, { ...aggregator, x: hpcRegion.x + hpcRegion.w * 0.78 + 30, y: hpcRegion.y + hpcRegion.h * 0.28 });
 
     const plotter = components.find((c) => c.id === "plotter");
-    if (plotter) map.set(plotter.id, { ...plotter, x: hpcRegion.x + hpcRegion.w * 0.78, y: hpcRegion.y + hpcRegion.h * 0.82 });
+    if (plotter) map.set(plotter.id, { ...plotter, x: hpcRegion.x + hpcRegion.w * 0.78 + 30, y: hpcRegion.y + hpcRegion.h * 0.82 });
 
     const viewer = components.find((c) => c.id === "viewer");
     if (viewer) map.set(viewer.id, { ...viewer, x: sourceRegion.x + sourceRegion.w * 0.52, y: sourceRegion.y + sourceRegion.h * 0.82 });
@@ -157,6 +177,7 @@
     const height = Math.max(520, Math.floor(window.innerHeight * 0.62));
 
     svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", height);
+    svg.classed("workflow-stopped", workflowStopped);
 
     const { facilities, nodes, links } = buildLayout(snapshot, width, height);
     const stats = snapshot?.nodeStats || {};
@@ -187,11 +208,15 @@
       .join((enter) => enter.append("path").attr("class", "flow-link").attr("fill", "none"), (update) => update, (exit) => exit.remove())
       .attr("d", (d) => linkPath(d))
       .style("stroke-width", (d) => {
+        if (workflowStopped) {
+          return 2;
+        }
         if (d.source === "source" && d.target === "ejfat") {
           return downstreamWidth * (workerCount / 2);
         }
         return downstreamWidth;
       })
+      .classed("flow-link-inactive", workflowStopped)
       .classed("flow-link-meta", (d) => d.meta === "contains");
 
     const nodeSel = nodeLayer.selectAll("g.wf-node").data(nodes, (d) => d.id);
@@ -219,6 +244,10 @@
     nodeEnter.select("text.wf-node-title").text((d) => d.label);
 
     nodeEnter.selectAll("text.wf-node-metric").each(function (d, i) {
+      if (workflowStopped) {
+        d3.select(this).text(i === 0 ? "inactive" : "");
+        return;
+      }
       const metricLines = nodeDetails(d, stats[d.id]);
       d3.select(this).text(metricLines[i] || "");
     });
@@ -232,10 +261,100 @@
 
   const handleIncoming = (payload) => {
     if (!payload || !payload.snapshot) return;
+    if (workflowStopped) return;
     if (payload.config) {
       currentConfig = payload.config;
     }
     render(payload.snapshot);
+  };
+
+  const showWorkflowSummary = () => {
+    if (!workflowSummaryBody) {
+      return;
+    }
+
+    const topStats = currentSnapshot?.stats || {};
+    const workerCount = Number(topStats.workerCount || 0);
+    const runningJobs = Number(topStats.runningJobs || 0);
+    const throughput = Number(topStats.throughputGbps || 0);
+
+    workflowSummaryBody.innerHTML = `
+      <p class="mb-2">Workflow has been stopped.</p>
+      <ul class="mb-0">
+        <li>Configuration: <strong>${bootstrap.configName || "Unknown"}</strong></li>
+        <li>Workers configured: <strong>${workerCount}</strong></li>
+        <li>Running jobs at stop: <strong>${runningJobs}</strong></li>
+        <li>Last throughput: <strong>${throughput} Gbps</strong></li>
+        <li>Stopped at: <strong>${new Date().toLocaleTimeString()}</strong></li>
+      </ul>
+    `;
+
+    if (workflowSummaryModal) {
+      workflowSummaryModal.show();
+    }
+  };
+
+  const stopWorkflow = () => {
+    if (workflowStopped) {
+      showWorkflowSummary();
+      return;
+    }
+
+    workflowStopped = true;
+    setWorkflowToggleButton();
+    setConnectionBadge("error", "Live: Stopped");
+
+    stopLiveUpdates();
+
+    if (currentSnapshot) {
+      render(currentSnapshot);
+    }
+
+    showWorkflowSummary();
+  };
+
+  const startWorkflow = async () => {
+    if (!workflowStopped) {
+      return;
+    }
+
+    try {
+      const statusResponse = await fetch("/api/proxy/status");
+      const statusPayload = await statusResponse.json();
+      if (!statusResponse.ok) {
+        throw new Error(statusPayload.error || "Unable to query proxy status.");
+      }
+
+      if (!statusPayload.connected) {
+        const startResponse = await fetch("/api/proxy/start", { method: "POST" });
+        const startPayload = await startResponse.json();
+        if (!startResponse.ok || !startPayload.ok) {
+          throw new Error(startPayload.error || "Failed to launch simulator.");
+        }
+      }
+
+      const runResponse = await fetch("/api/workflow/run", { method: "POST" });
+      const runPayload = await runResponse.json();
+      if (!runResponse.ok || runPayload.ok === false) {
+        throw new Error(runPayload.error || "Unable to start workflow.");
+      }
+
+      workflowStopped = false;
+      setWorkflowToggleButton();
+      setConnectionBadge("polling", "Live: Reconnecting…");
+      startLiveUpdates();
+
+      if (currentSnapshot) {
+        render(currentSnapshot);
+      }
+    } catch (error) {
+      if (workflowSummaryBody) {
+        workflowSummaryBody.innerHTML = `<p class="mb-0 text-danger">${error.message || "Unable to start workflow."}</p>`;
+      }
+      if (workflowSummaryModal) {
+        workflowSummaryModal.show();
+      }
+    }
   };
 
   const startPolling = () => {
@@ -258,6 +377,10 @@
   };
 
   const startWebSocket = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      return;
+    }
+
     const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
     const file = encodeURIComponent(bootstrap.configFile || "");
     const wsUrl = `${wsProto}://${window.location.host}/ws/workflow-status?file=${file}`;
@@ -283,14 +406,51 @@
       startPolling();
     };
     ws.onclose = () => {
+      ws = null;
       if (!pollTimer) {
         startPolling();
       }
     };
   };
 
+  const stopLiveUpdates = () => {
+    if (ws) {
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+      ws = null;
+    }
+
+    if (pollTimer) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  };
+
+  const startLiveUpdates = () => {
+    if (bootstrap.websocketEnabled) {
+      startWebSocket();
+    } else {
+      startPolling();
+    }
+  };
+
   if (currentSnapshot) {
     render(currentSnapshot);
+  }
+
+  setWorkflowToggleButton();
+
+  if (stopWorkflowBtn) {
+    stopWorkflowBtn.addEventListener("click", () => {
+      if (workflowStopped) {
+        startWorkflow();
+      } else {
+        stopWorkflow();
+      }
+    });
   }
 
   window.addEventListener("resize", () => {
@@ -299,9 +459,5 @@
     }
   });
 
-  if (bootstrap.websocketEnabled) {
-    startWebSocket();
-  } else {
-    startPolling();
-  }
+  startLiveUpdates();
 })();
