@@ -107,6 +107,7 @@
   let resolveProxyStopPrompt = null;
   let proxyHeartbeatInFlight = false;
   let lastProxyConnected = null;
+  let lastWorkflowRunning = null;
 
   const defaultProxyHost = "127.0.0.1";
   const defaultProxyPort = 11096;
@@ -393,6 +394,26 @@
     lastHpcFarmStatus = null;
   };
 
+  const hasRunningComponentRows = () =>
+    componentRows.some((row) => {
+      const badge = row.querySelector(".badge");
+      return badge && String(badge.textContent || "").trim().toLowerCase() === "running";
+    });
+
+  const syncWorkflowBadgesFromProxyState = (status) => {
+    if (!status || !componentRows.length) {
+      return;
+    }
+
+    if (lastWorkflowRunning === true && status.workflowRunning === false && hasRunningComponentRows()) {
+      updateRowStatuses("ready");
+    }
+
+    if (typeof status.workflowRunning === "boolean") {
+      lastWorkflowRunning = status.workflowRunning;
+    }
+  };
+
   const fetchProxyStatus = async () => {
     try {
       const response = await fetch("/api/proxy/status");
@@ -409,9 +430,12 @@
         isSimulator: Boolean(payload.isSimulator),
         canStop: Boolean(payload.canStop),
         localPid: payload.localPid || null,
+        workflowStatus: payload.workflowStatus || "unknown",
+        workflowRunning: Boolean(payload.workflowRunning),
       };
 
       setProxyConnectionLabel(status.connected);
+      syncWorkflowBadgesFromProxyState(status);
       if (lastProxyConnected === true && !status.connected) {
         invalidateCheckedComponents();
       }
@@ -426,6 +450,8 @@
         isSimulator: false,
         canStop: false,
         localPid: null,
+        workflowStatus: "unknown",
+        workflowRunning: false,
       };
       setProxyConnectionLabel(false);
       if (lastProxyConnected === true) {
@@ -440,6 +466,8 @@
     proxyInfoMessage.textContent = message;
     proxyInfoModal.show();
   };
+
+  const pause = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
   const formatBytes = (value) => {
     const numeric = Number(value);
@@ -1072,14 +1100,16 @@
     updateRowStatuses("pending");
   });
 
-  checkBtn.addEventListener("click", async () => {
+  const runPrelaunchChecks = async ({ showErrors = true } = {}) => {
     if (!componentRows.length) {
-      showProxyInfo("No pre-launch components defined for this configuration.");
-      return;
+      if (showErrors) {
+        showProxyInfo("No pre-launch components defined for this configuration.");
+      }
+      return false;
     }
 
     if (!(await ensureProxyConnection())) {
-      return;
+      return false;
     }
 
     updateRowStatuses("checking");
@@ -1113,6 +1143,7 @@
           }
         } else {
           setComponentStatus("file-check", "ready");
+          await pause(350);
         }
       }
 
@@ -1132,6 +1163,7 @@
           componentErrors.push(payload.error || "EJFAT control-plane check failed.");
         } else {
           setComponentStatus("ejfat-control-plane-check", "ready");
+          await pause(350);
         }
       }
 
@@ -1152,6 +1184,7 @@
           componentErrors.push(payload.error || "HPC farm check failed.");
         } else {
           setComponentStatus("hpc-farm-check", "ready");
+          await pause(350);
         }
       }
 
@@ -1163,7 +1196,8 @@
           throw new Error(payload.error || "Pre-launch check failed.");
         }
 
-        window.setTimeout(() => updateRowStatuses("ready"), 350);
+        await pause(350);
+        updateRowStatuses("ready");
       }
 
       setProxyConnectionLabel(proxyResponded ? true : false);
@@ -1171,12 +1205,20 @@
       if (componentErrors.length) {
         throw new Error(componentErrors.join("\n"));
       }
+      return true;
     } catch (error) {
       if (!proxyResponded) {
         setProxyConnectionLabel(false);
       }
-      showProxyInfo(error.message || "Pre-launch check failed.");
+      if (showErrors) {
+        showProxyInfo(error.message || "Pre-launch check failed.");
+      }
+      return false;
     }
+  };
+
+  checkBtn.addEventListener("click", async () => {
+    await runPrelaunchChecks({ showErrors: true });
   });
 
   componentsBody.addEventListener("click", (event) => {
@@ -1197,7 +1239,8 @@
   });
 
   runBtn.addEventListener("click", async () => {
-    if (!(await ensureProxyConnection())) {
+    const checksPassed = await runPrelaunchChecks({ showErrors: true });
+    if (!checksPassed) {
       return;
     }
 

@@ -6,6 +6,7 @@
   const statJobs = document.getElementById("stat-jobs");
   const statWorkers = document.getElementById("stat-workers");
   const statUpdated = document.getElementById("stat-updated");
+  const workflowStateBadge = document.getElementById("workflow-state-badge");
   const stopWorkflowBtn = document.getElementById("stop-workflow-btn");
   const workflowSummaryBody = document.getElementById("workflow-summary-body");
   const workflowSummaryModalEl = document.getElementById("workflowSummaryModal");
@@ -23,7 +24,7 @@
   let currentConfig = bootstrap.config || {};
   let ws = null;
   let pollTimer = null;
-  let workflowStopped = false;
+  let workflowStopped = !Boolean(bootstrap.workflowRunning);
 
   const workflowSummaryModal =
     workflowSummaryModalEl && window.bootstrap ? new window.bootstrap.Modal(workflowSummaryModalEl) : null;
@@ -40,6 +41,24 @@
       badge.classList.add("text-bg-secondary");
     }
     badge.textContent = text;
+  };
+
+  const setHeaderBadgesVisibility = () => {
+    if (workflowStateBadge) {
+      workflowStateBadge.classList.toggle("d-none", workflowStopped);
+    }
+    if (badge) {
+      badge.classList.toggle("d-none", workflowStopped);
+    }
+  };
+
+  const applyWorkflowState = (workflowState, runningFlag) => {
+    const normalized = String(workflowState || "").toLowerCase();
+    if (normalized === "running" || normalized === "idle" || typeof runningFlag === "boolean") {
+      workflowStopped = typeof runningFlag === "boolean" ? !runningFlag : normalized !== "running";
+      setWorkflowToggleButton();
+      setHeaderBadgesVisibility();
+    }
   };
 
   const setWorkflowToggleButton = () => {
@@ -261,7 +280,7 @@
 
   const handleIncoming = (payload) => {
     if (!payload || !payload.snapshot) return;
-    if (workflowStopped) return;
+    applyWorkflowState(payload.workflowState, payload.workflowRunning);
     if (payload.config) {
       currentConfig = payload.config;
     }
@@ -295,22 +314,39 @@
   };
 
   const stopWorkflow = () => {
-    if (workflowStopped) {
-      showWorkflowSummary();
-      return;
-    }
+    const doStop = async () => {
+      if (workflowStopped) {
+        showWorkflowSummary();
+        return;
+      }
 
-    workflowStopped = true;
-    setWorkflowToggleButton();
-    setConnectionBadge("error", "Live: Stopped");
+      try {
+        const stopResponse = await fetch("/api/workflow/stop", { method: "POST" });
+        const stopPayload = await stopResponse.json();
+        if (!stopResponse.ok || stopPayload.ok === false) {
+          throw new Error(stopPayload.error || "Unable to stop workflow.");
+        }
 
-    stopLiveUpdates();
+        applyWorkflowState(stopPayload.status, stopPayload.running);
+        setConnectionBadge("error", "Live: Stopped");
+        stopLiveUpdates();
 
-    if (currentSnapshot) {
-      render(currentSnapshot);
-    }
+        if (currentSnapshot) {
+          render(currentSnapshot);
+        }
 
-    showWorkflowSummary();
+        showWorkflowSummary();
+      } catch (error) {
+        if (workflowSummaryBody) {
+          workflowSummaryBody.innerHTML = `<p class="mb-0 text-danger">${error.message || "Unable to stop workflow."}</p>`;
+        }
+        if (workflowSummaryModal) {
+          workflowSummaryModal.show();
+        }
+      }
+    };
+
+    doStop();
   };
 
   const startWorkflow = async () => {
@@ -339,8 +375,13 @@
         throw new Error(runPayload.error || "Unable to start workflow.");
       }
 
-      workflowStopped = false;
-      setWorkflowToggleButton();
+      const stateResponse = await fetch("/api/workflow/state");
+      const statePayload = await stateResponse.json();
+      if (!stateResponse.ok || statePayload.ok === false) {
+        throw new Error(statePayload.error || "Unable to confirm workflow state.");
+      }
+
+      applyWorkflowState(statePayload.status, statePayload.running);
       setConnectionBadge("polling", "Live: Reconnecting…");
       startLiveUpdates();
 
@@ -442,6 +483,7 @@
   }
 
   setWorkflowToggleButton();
+  setHeaderBadgesVisibility();
 
   if (stopWorkflowBtn) {
     stopWorkflowBtn.addEventListener("click", () => {
@@ -459,5 +501,19 @@
     }
   });
 
-  startLiveUpdates();
+  const initializeWorkflowState = async () => {
+    try {
+      const response = await fetch("/api/workflow/state");
+      const payload = await response.json();
+      if (response.ok && payload.ok !== false) {
+        applyWorkflowState(payload.status, payload.running);
+      }
+    } catch {
+      // fallback to bootstrap state
+    }
+
+    startLiveUpdates();
+  };
+
+  initializeWorkflowState();
 })();

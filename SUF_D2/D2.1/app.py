@@ -363,6 +363,20 @@ def _get_proxy_ping(host: str = PROXY_HOST, port: int = PROXY_PORT):
     return reply if isinstance(reply, dict) and reply.get("ok") else None
 
 
+def _get_proxy_workflow_state(host: str = PROXY_HOST, port: int = PROXY_PORT) -> dict:
+    try:
+        reply = _proxy_http_request("GET", f"{PROXY_API_PREFIX}/status", host=host, port=port, timeout_sec=0.8)
+    except Exception:
+        return {"connected": False, "status": "unknown", "running": False}
+
+    if not isinstance(reply, dict):
+        return {"connected": False, "status": "unknown", "running": False}
+
+    status_text = str(reply.get("status", "unknown"))
+    running = bool(reply.get("running", status_text.lower() == "running"))
+    return {"connected": True, "status": status_text, "running": running}
+
+
 def _simulator_started_by_app() -> bool:
     global SIMULATOR_PROCESS
     return bool(SIMULATOR_PROCESS is not None and SIMULATOR_PROCESS.poll() is None)
@@ -441,10 +455,13 @@ def create_app() -> Flask:
 
             while True:
                 try:
+                    wf_state = _get_proxy_workflow_state(PROXY_HOST, PROXY_PORT)
                     payload = {
                         "ok": True,
                         "config": _monitor_config_payload(config),
                         "snapshot": _build_workflow_snapshot(config),
+                        "workflowState": wf_state.get("status", "unknown"),
+                        "workflowRunning": bool(wf_state.get("running", False)),
                         "timestamp": int(time.time() * 1000),
                     }
                     ws.send(json.dumps(payload))
@@ -471,12 +488,22 @@ def create_app() -> Flask:
         if loaded_config:
             config_name = str(loaded_config.get("name", config_name) or config_name)
 
+        wf_state = _get_proxy_workflow_state(PROXY_HOST, PROXY_PORT)
+        if wf_state.get("status") == "running":
+            status = "Running"
+        elif wf_state.get("status") == "idle":
+            status = "Stopped"
+        elif wf_state.get("status") == "unknown":
+            status = "Unknown"
+
         status_bootstrap = {
             "configName": config_name,
             "status": status,
             "configFile": selected_file or fallback_file,
             "config": _monitor_config_payload(loaded_config),
             "snapshot": _build_workflow_snapshot(loaded_config),
+            "workflowState": wf_state.get("status", "unknown"),
+            "workflowRunning": bool(wf_state.get("running", False)),
             "websocketEnabled": bool(Sock is not None),
         }
 
@@ -491,6 +518,7 @@ def create_app() -> Flask:
     def workflow_status_snapshot():
         file_name = (request.args.get("file") or "").strip()
         config = _load_config_file(file_name) if file_name else _load_config_file("amsc-d2-1-demo.yaml")
+        wf_state = _get_proxy_workflow_state(PROXY_HOST, PROXY_PORT)
 
         return jsonify(
             {
@@ -498,6 +526,8 @@ def create_app() -> Flask:
                 "configFile": file_name,
                 "config": _monitor_config_payload(config),
                 "snapshot": _build_workflow_snapshot(config),
+                "workflowState": wf_state.get("status", "unknown"),
+                "workflowRunning": bool(wf_state.get("running", False)),
                 "timestamp": int(time.time() * 1000),
             }
         )
@@ -608,6 +638,7 @@ def create_app() -> Flask:
         connected = ping is not None
         local_pid = _find_listening_pid(PROXY_PORT) if connected else None
         can_stop = _can_signal_pid(local_pid)
+        wf_state = _get_proxy_workflow_state(PROXY_HOST, PROXY_PORT) if connected else {"status": "unknown", "running": False}
         return jsonify(
             {
                 "connected": connected,
@@ -617,6 +648,8 @@ def create_app() -> Flask:
                 "isSimulator": bool(isinstance(ping, dict) and ping.get("service") == "proxy-simulator"),
                 "localPid": local_pid,
                 "canStop": can_stop,
+                "workflowStatus": wf_state.get("status", "unknown"),
+                "workflowRunning": bool(wf_state.get("running", False)),
             }
         )
 
@@ -766,6 +799,36 @@ def create_app() -> Flask:
                 f"{PROXY_API_PREFIX}/check-components",
                 host=PROXY_HOST,
                 port=PROXY_PORT,
+            )
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 503
+
+        if not isinstance(reply, dict):
+            return jsonify({"ok": False, "error": "Invalid response from proxy."}), 502
+
+        return jsonify(reply)
+
+    @app.route("/api/workflow/state")
+    def workflow_state():
+        state = _get_proxy_workflow_state(PROXY_HOST, PROXY_PORT)
+        return jsonify(
+            {
+                "ok": True,
+                "connected": bool(state.get("connected", False)),
+                "status": state.get("status", "unknown"),
+                "running": bool(state.get("running", False)),
+            }
+        )
+
+    @app.route("/api/workflow/stop", methods=["POST"])
+    def workflow_stop():
+        try:
+            reply = _proxy_http_request(
+                "POST",
+                f"{PROXY_API_PREFIX}/stop-workflow",
+                host=PROXY_HOST,
+                port=PROXY_PORT,
+                timeout_sec=2.5,
             )
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 503

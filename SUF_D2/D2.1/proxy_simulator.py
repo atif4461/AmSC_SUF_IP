@@ -13,7 +13,7 @@ PORT = 11096
 API_PREFIX = "/v1"
 
 app = Flask(__name__)
-workflow_running = False
+workflow_running = None
 
 ENDPOINT_DOCS = {
     "ping": {
@@ -52,7 +52,20 @@ ENDPOINT_DOCS = {
         "returns": {
             "ok": True,
             "status": "running",
+            "running": True,
             "message": "Workflow started",
+        },
+    },
+    "stop-workflow": {
+        "method": "POST",
+        "path": f"{API_PREFIX}/stop-workflow",
+        "description": "Simulate stopping a workflow.",
+        "inputs": "None",
+        "returns": {
+            "ok": True,
+            "status": "idle",
+            "running": False,
+            "message": "Workflow stopped",
         },
     },
     "status": {
@@ -62,7 +75,8 @@ ENDPOINT_DOCS = {
         "inputs": "None",
         "returns": {
             "ok": True,
-            "status": "running | idle",
+            "status": "unknown | running | idle",
+            "running": True,
         },
     },
     "check-files": {
@@ -312,12 +326,22 @@ def check_components():
 def run_workflow():
     global workflow_running
     workflow_running = True
-    return jsonify({"ok": True, "status": "running", "message": "Workflow started"})
+    return jsonify({"ok": True, "status": "running", "running": True, "message": "Workflow started"})
+
+
+@app.post(f"{API_PREFIX}/stop-workflow")
+def stop_workflow():
+    global workflow_running
+    workflow_running = False
+    return jsonify({"ok": True, "status": "idle", "running": False, "message": "Workflow stopped"})
 
 
 @app.get(f"{API_PREFIX}/status")
 def status():
-    return jsonify({"ok": True, "status": "running" if workflow_running else "idle"})
+    if workflow_running is None:
+        return jsonify({"ok": True, "status": "unknown", "running": False})
+
+    return jsonify({"ok": True, "status": "running" if workflow_running else "idle", "running": workflow_running})
 
 
 @app.post(f"{API_PREFIX}/check-files")
