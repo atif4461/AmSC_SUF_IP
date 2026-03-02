@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import glob
 import json
+import math
+import random
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +16,17 @@ API_PREFIX = "/v1"
 
 app = Flask(__name__)
 workflow_running = None
+workflow_started_at = None
+worker_flow_delays_sec: list[float] = []
+worker_to_aggregator_delays_sec: list[float] = []
+
+SOURCE_TO_LB_DELAY_SEC = 1.5
+WORKER_DELAY_MEAN_SEC = 1.5
+WORKER_DELAY_STDDEV_SEC = 0.5
+WORKER_DELAY_MIN_SEC = 1.0
+WORKER_DELAY_MAX_SEC = 3.0
+AGGREGATOR_TO_PLOT_DELAY_SEC = 1.5
+PLOT_TO_VIEWER_DELAY_SEC = 1.5
 
 ENDPOINT_DOCS = {
     "ping": {
@@ -188,11 +201,284 @@ ENDPOINT_DOCS = {
             },
         },
     },
+    "workflow-metrics": {
+        "method": "POST",
+        "path": f"{API_PREFIX}/workflow-metrics",
+        "description": "Simulate live workflow metrics for visualization.",
+        "inputs": {
+            "config": {
+                "hpcCompute": {
+                    "numJobs": "10",
+                },
+                "dataTransport": {
+                    "type": "ejfat",
+                },
+            },
+            "workerCount": 10,
+            "ejfatEnabled": True,
+        },
+        "returns": {
+            "ok": True,
+            "status": "success",
+            "running": True,
+            "workflowState": "running | idle | unknown",
+            "stats": {
+                "throughputGbps": 21.5,
+                "runningJobs": 8,
+                "workerCount": 10,
+            },
+            "nodeStats": {
+                "source": {
+                    "framesPerSec": 215000,
+                    "rateGbps": 21.5,
+                },
+            },
+        },
+    },
 }
 
 
 def _is_glob_pattern(value: str) -> bool:
     return any(ch in value for ch in ("*", "?", "["))
+
+
+def _safe_int(value, default: int) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _ensure_worker_flow_delays(worker_count: int) -> list[float]:
+    global worker_flow_delays_sec
+
+    if len(worker_flow_delays_sec) == worker_count:
+        return worker_flow_delays_sec
+
+    sampled = []
+    for _ in range(worker_count):
+        delay = random.gauss(WORKER_DELAY_MEAN_SEC, WORKER_DELAY_STDDEV_SEC)
+        sampled.append(_clamp(delay, WORKER_DELAY_MIN_SEC, WORKER_DELAY_MAX_SEC))
+
+    worker_flow_delays_sec = sampled
+    return worker_flow_delays_sec
+
+
+def _ensure_worker_to_aggregator_delays(worker_count: int) -> list[float]:
+    global worker_to_aggregator_delays_sec
+
+    if len(worker_to_aggregator_delays_sec) == worker_count:
+        return worker_to_aggregator_delays_sec
+
+    sampled = []
+    for _ in range(worker_count):
+        delay = random.gauss(WORKER_DELAY_MEAN_SEC, WORKER_DELAY_STDDEV_SEC)
+        sampled.append(_clamp(delay, WORKER_DELAY_MIN_SEC, WORKER_DELAY_MAX_SEC))
+
+    worker_to_aggregator_delays_sec = sampled
+    return worker_to_aggregator_delays_sec
+
+
+def _current_flow_activation(worker_count: int):
+    global workflow_started_at
+
+    if workflow_running is not True or workflow_started_at is None:
+        return {
+            "elapsedSec": 0.0,
+            "sourceActive": False,
+            "workerIngressActive": [False for _ in range(worker_count)],
+            "workerIngressStartSec": [0.0 for _ in range(worker_count)],
+            "workerEgressActive": [False for _ in range(worker_count)],
+            "workerEgressStartSec": [0.0 for _ in range(worker_count)],
+            "aggregatorActive": False,
+            "aggregatorStartSec": 0.0,
+            "plotterActive": False,
+            "plotterStartSec": 0.0,
+            "viewerActive": False,
+            "viewerStartSec": 0.0,
+        }
+
+    elapsed = max(0.0, time.time() - workflow_started_at)
+    source_active = elapsed >= SOURCE_TO_LB_DELAY_SEC
+    worker_ingress_delays = _ensure_worker_flow_delays(worker_count)
+    worker_egress_delays = _ensure_worker_to_aggregator_delays(worker_count)
+
+    worker_ingress_active = []
+    worker_ingress_start_sec = []
+    worker_egress_active = []
+    worker_egress_start_sec = []
+
+    for i in range(worker_count):
+        ingress_start = SOURCE_TO_LB_DELAY_SEC + worker_ingress_delays[i]
+        worker_ingress_start_sec.append(ingress_start)
+        ingress_active = source_active and elapsed >= ingress_start
+        worker_ingress_active.append(ingress_active)
+
+        egress_start = ingress_start + worker_egress_delays[i]
+        worker_egress_start_sec.append(egress_start)
+        egress_active = ingress_active and elapsed >= egress_start
+        worker_egress_active.append(egress_active)
+
+    first_worker_egress_start = min(worker_egress_start_sec) if worker_egress_start_sec else float("inf")
+    aggregator_start_sec = first_worker_egress_start if first_worker_egress_start != float("inf") else 0.0
+    aggregator_active = elapsed >= aggregator_start_sec if source_active and worker_count > 0 else False
+
+    plotter_start_sec = aggregator_start_sec + AGGREGATOR_TO_PLOT_DELAY_SEC if aggregator_active or aggregator_start_sec > 0 else 0.0
+    plotter_active = elapsed >= plotter_start_sec if plotter_start_sec > 0 else False
+
+    viewer_start_sec = plotter_start_sec + PLOT_TO_VIEWER_DELAY_SEC if plotter_start_sec > 0 else 0.0
+    viewer_active = elapsed >= viewer_start_sec if viewer_start_sec > 0 else False
+
+    return {
+        "elapsedSec": elapsed,
+        "sourceActive": source_active,
+        "workerIngressActive": worker_ingress_active,
+        "workerIngressStartSec": worker_ingress_start_sec,
+        "workerEgressActive": worker_egress_active,
+        "workerEgressStartSec": worker_egress_start_sec,
+        "aggregatorActive": aggregator_active,
+        "aggregatorStartSec": aggregator_start_sec,
+        "plotterActive": plotter_active,
+        "plotterStartSec": plotter_start_sec,
+        "viewerActive": viewer_active,
+        "viewerStartSec": viewer_start_sec,
+    }
+
+
+def _build_workflow_metrics(config: dict, worker_count: int, ejfat_enabled: bool):
+    global workflow_running
+
+    now = time.time()
+    activation = _current_flow_activation(worker_count)
+    elapsed = float(activation.get("elapsedSec", 0.0))
+    source_active = bool(activation.get("sourceActive", False))
+    worker_ingress_active_flags = activation.get("workerIngressActive", [False for _ in range(worker_count)])
+    worker_ingress_start_sec = activation.get("workerIngressStartSec", [0.0 for _ in range(worker_count)])
+    worker_egress_active_flags = activation.get("workerEgressActive", [False for _ in range(worker_count)])
+    worker_egress_start_sec = activation.get("workerEgressStartSec", [0.0 for _ in range(worker_count)])
+    aggregator_active = bool(activation.get("aggregatorActive", False))
+    plotter_active = bool(activation.get("plotterActive", False))
+    viewer_active = bool(activation.get("viewerActive", False))
+
+    active = 1.0 if source_active else 0.0
+    active_worker_ingress_count = sum(1 for is_active in worker_ingress_active_flags if is_active)
+    active_worker_egress_count = sum(1 for is_active in worker_egress_active_flags if is_active)
+
+    if active_worker_egress_count > 0:
+        running_jobs = max(
+            1,
+            min(
+                active_worker_egress_count,
+                int(round(active_worker_egress_count * (0.72 + 0.18 * (math.sin(now / 10.0) + 1) / 2.0))),
+            ),
+        )
+    else:
+        running_jobs = 0
+
+    src_rate_gbps = active * (19.5 + 2.2 * math.sin(now / 4.0))
+    lb_efficiency = 0.96 + 0.02 * math.sin(now / 9.0)
+    if active > 0 and active_worker_ingress_count > 0:
+        split_rate = max(0.2, src_rate_gbps * lb_efficiency / active_worker_ingress_count)
+    else:
+        split_rate = 0.0
+
+    hist_merge_rate = max(12.0, split_rate * active_worker_egress_count * 76.0) if aggregator_active else 0.0
+    images_per_min = max(1.0, 8.0 + 3.0 * (math.sin(now / 7.0) + 1.0)) if plotter_active else 0.0
+    latest_image_age = max(0.3, 5.5 - 2.1 * (math.sin(now / 6.3) + 1.0) / 2.0) if viewer_active else 0.0
+
+    node_stats = {
+        "source": {
+            "framesPerSec": int(src_rate_gbps * 11500),
+            "rateGbps": round(src_rate_gbps, 2),
+        },
+        "aggregator": {
+            "histogramsPerSec": round(hist_merge_rate, 1),
+            "queueDepth": int(20 + 14 * (math.sin(now / 5.0) + 1.0)) if aggregator_active else 0,
+        },
+        "plotter": {
+            "imagesPerMin": round(images_per_min, 1),
+            "lastRenderMs": int(120 + 65 * (math.sin(now / 3.5) + 1.0)) if plotter_active else 0,
+        },
+        "viewer": {
+            "latestImageAgeSec": round(latest_image_age, 1),
+            "viewers": int(2 + 4 * (math.sin(now / 11.0) + 1.0)) if viewer_active else 0,
+        },
+    }
+
+    if ejfat_enabled:
+        node_stats["ejfat"] = {
+            "outStreams": worker_count,
+            "splitRateGbps": round(split_rate, 2),
+            "imbalancePct": round(0.4 + 1.8 * (math.sin(now / 8.0) + 1.0) / 2.0, 2) if active_worker_ingress_count > 0 else 0.0,
+        }
+
+    for i in range(worker_count):
+        worker_active = worker_ingress_active_flags[i] if i < len(worker_ingress_active_flags) else False
+        worker_egress_active = worker_egress_active_flags[i] if i < len(worker_egress_active_flags) else False
+        worker_scale = 0.93 + 0.12 * ((i % 3) / 3)
+        node_stats[f"worker-{i + 1}"] = {
+            "framesPerSec": int(split_rate * 10800 * worker_scale) if worker_active else 0,
+            "inferenceMs": round(7.5 + 3.2 * (math.sin(now / (2.7 + (i % 3))) + 1.0), 2) if worker_egress_active else 0.0,
+            "histFillPerSec": int(190 + 42 * (math.sin((now + i) / 4.8) + 1.0)) if worker_egress_active else 0,
+        }
+
+    link_stats = {}
+    if ejfat_enabled:
+        link_stats["source->ejfat"] = {"active": source_active}
+        for i in range(worker_count):
+            worker_id = f"worker-{i + 1}"
+            ingress_active = worker_ingress_active_flags[i] if i < len(worker_ingress_active_flags) else False
+            link_stats[f"ejfat->{worker_id}"] = {"active": ingress_active}
+            egress_active = worker_egress_active_flags[i] if i < len(worker_egress_active_flags) else False
+            link_stats[f"{worker_id}->aggregator"] = {"active": egress_active}
+    else:
+        for i in range(worker_count):
+            worker_id = f"worker-{i + 1}"
+            ingress_active = worker_ingress_active_flags[i] if i < len(worker_ingress_active_flags) else False
+            link_stats[f"source->{worker_id}"] = {"active": ingress_active}
+            egress_active = worker_egress_active_flags[i] if i < len(worker_egress_active_flags) else False
+            link_stats[f"{worker_id}->aggregator"] = {"active": egress_active}
+
+    link_stats["aggregator->plotter"] = {"active": plotter_active}
+    link_stats["plotter->viewer"] = {"active": viewer_active}
+
+    if workflow_running is True:
+        state_text = "running"
+    elif workflow_running is False:
+        state_text = "idle"
+    else:
+        state_text = "unknown"
+
+    return {
+        "ok": True,
+        "status": "success",
+        "running": workflow_running is True,
+        "workflowState": state_text,
+        "stats": {
+            "throughputGbps": round(src_rate_gbps, 2),
+            "runningJobs": running_jobs,
+            "workerCount": worker_count,
+        },
+        "delays": {
+            "sourceToLoadBalancerSec": SOURCE_TO_LB_DELAY_SEC,
+            "workerAfterLoadBalancerSec": [round(delay, 3) for delay in _ensure_worker_flow_delays(worker_count)],
+            "workerToAggregatorSec": [round(delay, 3) for delay in _ensure_worker_to_aggregator_delays(worker_count)],
+            "workerIngressStartTimesSec": [round(value, 3) for value in worker_ingress_start_sec],
+            "workerEgressStartTimesSec": [round(value, 3) for value in worker_egress_start_sec],
+            "aggregatorToPlotSec": AGGREGATOR_TO_PLOT_DELAY_SEC,
+            "plotToViewerSec": PLOT_TO_VIEWER_DELAY_SEC,
+            "aggregatorStartSec": round(float(activation.get("aggregatorStartSec", 0.0)), 3),
+            "plotterStartSec": round(float(activation.get("plotterStartSec", 0.0)), 3),
+            "viewerStartSec": round(float(activation.get("viewerStartSec", 0.0)), 3),
+            "elapsedSec": round(elapsed, 3),
+        },
+        "linkStats": link_stats,
+        "nodeStats": node_stats,
+    }
 
 
 def _expand_requested_files(path_value: str, files_value: list[str]):
@@ -324,15 +610,21 @@ def check_components():
 
 @app.post(f"{API_PREFIX}/run-workflow")
 def run_workflow():
-    global workflow_running
+    global workflow_running, workflow_started_at, worker_flow_delays_sec, worker_to_aggregator_delays_sec
     workflow_running = True
+    workflow_started_at = time.time()
+    worker_flow_delays_sec = []
+    worker_to_aggregator_delays_sec = []
     return jsonify({"ok": True, "status": "running", "running": True, "message": "Workflow started"})
 
 
 @app.post(f"{API_PREFIX}/stop-workflow")
 def stop_workflow():
-    global workflow_running
+    global workflow_running, workflow_started_at, worker_flow_delays_sec, worker_to_aggregator_delays_sec
     workflow_running = False
+    workflow_started_at = None
+    worker_flow_delays_sec = []
+    worker_to_aggregator_delays_sec = []
     return jsonify({"ok": True, "status": "idle", "running": False, "message": "Workflow stopped"})
 
 
@@ -340,6 +632,11 @@ def stop_workflow():
 def status():
     if workflow_running is None:
         return jsonify({"ok": True, "status": "unknown", "running": False})
+
+    if workflow_running is True and workflow_started_at is not None:
+        elapsed = max(0.0, time.time() - workflow_started_at)
+        if elapsed < SOURCE_TO_LB_DELAY_SEC:
+            return jsonify({"ok": True, "status": "idle", "running": False, "warmup": True, "elapsedSec": round(elapsed, 3)})
 
     return jsonify({"ok": True, "status": "running" if workflow_running else "idle", "running": workflow_running})
 
@@ -449,6 +746,23 @@ def check_hpc_farm():
             },
         }
     )
+
+
+@app.post(f"{API_PREFIX}/workflow-metrics")
+def workflow_metrics():
+    payload = request.get_json(silent=True) or {}
+    config = payload.get("config", {}) if isinstance(payload.get("config"), dict) else {}
+
+    hpc = config.get("hpcCompute", {}) if isinstance(config.get("hpcCompute"), dict) else {}
+    data_transport = config.get("dataTransport", {}) if isinstance(config.get("dataTransport"), dict) else {}
+
+    default_workers = max(1, _safe_int(hpc.get("numJobs", 4), 4))
+    worker_count = max(1, _safe_int(payload.get("workerCount", default_workers), default_workers))
+
+    ejfat_default = str(data_transport.get("type", "")).strip().lower() == "ejfat"
+    ejfat_enabled = bool(payload.get("ejfatEnabled", ejfat_default))
+
+    return jsonify(_build_workflow_metrics(config, worker_count, ejfat_enabled))
 
 
 if __name__ == "__main__":

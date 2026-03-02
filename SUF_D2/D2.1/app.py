@@ -1,7 +1,6 @@
 from pathlib import Path
 import json
 import importlib
-import math
 import os
 import signal
 import subprocess
@@ -234,52 +233,53 @@ def _build_workflow_topology(config: dict) -> dict:
     }
 
 
+def _get_proxy_workflow_metrics(config: dict, worker_count: int, ejfat_enabled: bool) -> dict:
+    try:
+        reply = _proxy_http_request(
+            "POST",
+            f"{PROXY_API_PREFIX}/workflow-metrics",
+            payload={
+                "config": config,
+                "workerCount": worker_count,
+                "ejfatEnabled": ejfat_enabled,
+            },
+            host=PROXY_HOST,
+            port=PROXY_PORT,
+            timeout_sec=1.5,
+        )
+    except Exception:
+        return {
+            "ok": False,
+            "stats": {
+                "throughputGbps": 0.0,
+                "runningJobs": 0,
+                "workerCount": worker_count,
+            },
+            "nodeStats": {},
+        }
+
+    if not isinstance(reply, dict):
+        return {
+            "ok": False,
+            "stats": {
+                "throughputGbps": 0.0,
+                "runningJobs": 0,
+                "workerCount": worker_count,
+            },
+            "nodeStats": {},
+        }
+
+    return reply
+
+
 def _build_workflow_snapshot(config: dict) -> dict:
     topology = _build_workflow_topology(config)
     worker_count = topology["workerCount"]
     now = time.time()
-
-    src_rate_gbps = 19.5 + 2.2 * math.sin(now / 4.0)
-    lb_efficiency = 0.96 + 0.02 * math.sin(now / 9.0)
-    split_rate = max(0.2, src_rate_gbps * lb_efficiency / worker_count)
-    running_jobs = max(1, min(worker_count, int(round(worker_count * (0.72 + 0.18 * (math.sin(now / 10.0) + 1) / 2.0)))))
-
-    hist_merge_rate = max(12.0, split_rate * worker_count * 76.0)
-    images_per_min = max(1.0, 8.0 + 3.0 * (math.sin(now / 7.0) + 1.0))
-    latest_image_age = max(0.3, 5.5 - 2.1 * (math.sin(now / 6.3) + 1.0) / 2.0)
-
-    node_stats = {
-        "source": {
-            "eventsPerSec": int(src_rate_gbps * 11500),
-            "rateGbps": round(src_rate_gbps, 2),
-        },
-        "aggregator": {
-            "histogramsPerSec": round(hist_merge_rate, 1),
-            "queueDepth": int(20 + 14 * (math.sin(now / 5.0) + 1.0)),
-        },
-        "plotter": {
-            "imagesPerMin": round(images_per_min, 1),
-            "lastRenderMs": int(120 + 65 * (math.sin(now / 3.5) + 1.0)),
-        },
-        "viewer": {
-            "latestImageAgeSec": round(latest_image_age, 1),
-            "viewers": int(2 + 4 * (math.sin(now / 11.0) + 1.0)),
-        },
-    }
-
-    if topology["ejfatEnabled"]:
-        node_stats["ejfat"] = {
-            "outStreams": worker_count,
-            "splitRateGbps": round(split_rate, 2),
-            "imbalancePct": round(0.4 + 1.8 * (math.sin(now / 8.0) + 1.0) / 2.0, 2),
-        }
-
-    for i in range(worker_count):
-        node_stats[f"worker-{i + 1}"] = {
-            "eventsPerSec": int(split_rate * 10800 * (0.93 + 0.12 * ((i % 3) / 3))),
-            "inferenceMs": round(7.5 + 3.2 * (math.sin(now / (2.7 + (i % 3))) + 1.0), 2),
-            "histFillPerSec": int(190 + 42 * (math.sin((now + i) / 4.8) + 1.0)),
-        }
+    proxy_metrics = _get_proxy_workflow_metrics(config, worker_count, topology["ejfatEnabled"])
+    stats = proxy_metrics.get("stats") if isinstance(proxy_metrics.get("stats"), dict) else {}
+    node_stats = proxy_metrics.get("nodeStats") if isinstance(proxy_metrics.get("nodeStats"), dict) else {}
+    link_stats = proxy_metrics.get("linkStats") if isinstance(proxy_metrics.get("linkStats"), dict) else {}
 
     return {
         "timestamp": int(now * 1000),
@@ -290,10 +290,11 @@ def _build_workflow_snapshot(config: dict) -> dict:
             "ejfatEnabled": topology["ejfatEnabled"],
         },
         "stats": {
-            "throughputGbps": round(src_rate_gbps, 2),
-            "runningJobs": running_jobs,
-            "workerCount": worker_count,
+            "throughputGbps": float(stats.get("throughputGbps", 0.0)),
+            "runningJobs": int(stats.get("runningJobs", 0)),
+            "workerCount": int(stats.get("workerCount", worker_count)),
         },
+        "linkStats": link_stats,
         "nodeStats": node_stats,
     }
 

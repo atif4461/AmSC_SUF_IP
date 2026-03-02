@@ -89,11 +89,11 @@
     const map = new Map();
     const centerY = height * 0.46;
 
-    const sourceRegion = { x: width * 0.03, y: height * 0.08, w: width * 0.216, h: height * 0.84, label: "Data Source: BNL" };
+    const sourceRegion = { x: width * 0.03, y: height * 0.08, w: Math.max(120, width * 0.216 - 20), h: height * 0.84, label: "Data Source: BNL" };
     const transportRegion = {
-      x: width * 0.28,
+      x: width * 0.28 - 20,
       y: height * 0.08,
-      w: width * 0.18,
+      w: width * 0.18 + 20,
       h: height * 0.84,
       label: "Data Transport: ESnet",
     };
@@ -116,18 +116,21 @@
     const workerEndX = hpcRegion.x + hpcRegion.w * 0.58;
     const workerCols = Math.max(2, Math.min(4, Math.ceil(Math.sqrt(workerNodes.length))));
     const workerRows = Math.max(1, Math.ceil(workerNodes.length / workerCols));
-    const xGap = workerCols > 1 ? (workerEndX - workerStartX) / (workerCols - 1) : 0;
-    const yStart = hpcRegion.y + hpcRegion.h * 0.18;
-    const yEnd = hpcRegion.y + hpcRegion.h * 0.74;
-    const yGap = workerRows > 1 ? (yEnd - yStart) / (workerRows - 1) : 0;
+    const workerExtraSpacing = 0;
+    const xAvailable = workerEndX - workerStartX - workerExtraSpacing * Math.max(0, workerCols - 1);
+    const xGap = workerCols > 1 ? xAvailable / (workerCols - 1) : 0;
+    const yStart = hpcRegion.y + hpcRegion.h * 0.12;
+    const yEnd = hpcRegion.y + hpcRegion.h * 0.80;
+    const yAvailable = yEnd - yStart - workerExtraSpacing * Math.max(0, workerRows - 1);
+    const yGap = workerRows > 1 ? yAvailable / (workerRows - 1) : 0;
 
     workerNodes.forEach((node, i) => {
       const col = i % workerCols;
       const row = Math.floor(i / workerCols);
       map.set(node.id, {
         ...node,
-        x: workerStartX + xGap * col,
-        y: yStart + yGap * row,
+        x: workerStartX + (xGap + workerExtraSpacing) * col,
+        y: yStart + (yGap + workerExtraSpacing) * row,
       });
     });
 
@@ -156,9 +159,9 @@
 
   const nodeDetails = (node, stats) => {
     if (!stats) return ["no stats"];
-    if (node.group === "source") return [`${stats.eventsPerSec || 0} evt/s`, `${stats.rateGbps || 0} Gbps`];
+    if (node.group === "source") return [`${stats.framesPerSec || stats.eventsPerSec || 0} evt/s`, `${stats.rateGbps || 0} Gbps`];
     if (node.group === "transport") return [`${stats.outStreams || 0} streams`, `${stats.splitRateGbps || 0} Gbps/stream`];
-    if (node.group === "worker") return [`${stats.eventsPerSec || 0} evt/s`, `${stats.inferenceMs || 0} ms infer`];
+    if (node.group === "worker") return [`${stats.framesPerSec || stats.eventsPerSec || 0} evt/s`, `${stats.inferenceMs || 0} ms infer`];
     if (node.group === "aggregate") return [`${stats.histogramsPerSec || 0} hist/s`, `Q=${stats.queueDepth || 0}`];
     if (node.group === "plot") return [`${stats.imagesPerMin || 0} img/min`, `${stats.lastRenderMs || 0} ms`];
     if (node.group === "monitor") return [`${stats.latestImageAgeSec || 0} s age`, `${stats.viewers || 0} viewers`];
@@ -200,6 +203,7 @@
 
     const { facilities, nodes, links } = buildLayout(snapshot, width, height);
     const stats = snapshot?.nodeStats || {};
+    const linkStats = snapshot?.linkStats || {};
     const workerCount = Number(snapshot?.topology?.workerCount || 1);
     const downstreamWidth = 2.4;
 
@@ -222,12 +226,60 @@
       .attr("y", (d) => d.y + 22)
       .text((d) => d.label);
 
+    const toNum = (value) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const nodeFlowActive = (nodeId) => {
+      const ns = stats[nodeId] || {};
+      if (nodeId === "source") return toNum(ns.framesPerSec ?? ns.eventsPerSec) > 0;
+      if (nodeId === "ejfat") return toNum(ns.splitRateGbps) > 0;
+      if (String(nodeId).startsWith("worker-")) return toNum(ns.framesPerSec ?? ns.eventsPerSec) > 0;
+      if (nodeId === "aggregator") return toNum(ns.histogramsPerSec) > 0;
+      if (nodeId === "plotter") return toNum(ns.imagesPerMin) > 0;
+      if (nodeId === "viewer") return toNum(ns.latestImageAgeSec) > 0;
+      return false;
+    };
+
+    const linkIsActive = (link) => {
+      if (workflowStopped) {
+        return false;
+      }
+
+      const linkKey = `${link.source}->${link.target}`;
+      if (Object.prototype.hasOwnProperty.call(linkStats, linkKey)) {
+        const linkInfo = linkStats[linkKey] || {};
+        if (typeof linkInfo.active === "boolean") {
+          return linkInfo.active;
+        }
+      }
+
+      // For source->EJFAT, activation is gated by source flow.
+      if (link.source === "source" && link.target === "ejfat") {
+        return nodeFlowActive("source");
+      }
+
+      // For EJFAT->worker, each worker activates independently from proxy delays.
+      if (link.source === "ejfat" && String(link.target).startsWith("worker-")) {
+        return nodeFlowActive(link.target);
+      }
+
+      // For direct source->worker topology, use worker activation.
+      if (link.source === "source" && String(link.target).startsWith("worker-")) {
+        return nodeFlowActive(link.target);
+      }
+
+      // Downstream links activate with their source node.
+      return nodeFlowActive(link.source);
+    };
+
     const linkSel = linkLayer.selectAll("path.flow-link").data(links, (d) => `${d.source}->${d.target}`);
     linkSel
       .join((enter) => enter.append("path").attr("class", "flow-link").attr("fill", "none"), (update) => update, (exit) => exit.remove())
       .attr("d", (d) => linkPath(d))
       .style("stroke-width", (d) => {
-        if (workflowStopped) {
+        if (!linkIsActive(d)) {
           return 2;
         }
         if (d.source === "source" && d.target === "ejfat") {
@@ -235,7 +287,7 @@
         }
         return downstreamWidth;
       })
-      .classed("flow-link-inactive", workflowStopped)
+      .classed("flow-link-inactive", (d) => !linkIsActive(d))
       .classed("flow-link-meta", (d) => d.meta === "contains");
 
     const nodeSel = nodeLayer.selectAll("g.wf-node").data(nodes, (d) => d.id);
