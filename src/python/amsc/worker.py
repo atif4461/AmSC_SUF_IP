@@ -3,6 +3,7 @@ import argparse
 import zmq
 import signal
 import sys
+from amsc import message
 
 PULL_ADDRESS = "tcp://localhost:5555"
 PUSH_ADDRESS = "tcp://localhost:5556"
@@ -13,6 +14,7 @@ def add_arguments(parser):
     parser.add_argument("--output-address", default=PUSH_ADDRESS, help="Output address of ZMQ socket")
     parser.add_argument("--ejfat", action=argparse.BooleanOptionalAction, default=False, help="Use EJFAT load balancer")
     parser.add_argument("--real-data", action=argparse.BooleanOptionalAction, default=False, help="Use real GlueX data")
+    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 def process_fake_data(data: bytes) -> bytes:
     # Example: uppercase transform
@@ -21,18 +23,22 @@ def process_fake_data(data: bytes) -> bytes:
     print(f"Sending: {result!r}")
     return result
 
-def process_real_data(data: bytes) -> bytes:
-    # Example: uppercase transform
-    print(f"Received {len(data)} bytes")
-    return data.upper()
+def process_real_data(serialized_data: bytes, verbose: bool) -> bytes:
+    print(f"Received {len(serialized_data)} bytes")
+    msg = message.Message.from_arrow(serialized_data)
+    if verbose:
+        msg.print_all()
+    else:
+        msg.print_short()
+    return b"Thank you so much!"
 
 def run(args):
     print("Running worker:")
     print("  name:           ", args.name)
     print("  input_address:  ", args.input_address)
     print("  output_address: ", args.output_address)
-    print("  use_ejfat:      ", args.ejfat)
-    print("  use_real_data:  ", args.real_data)
+    print("  ejfat:          ", args.ejfat)
+    print("  real_data:      ", args.real_data)
 
     context = zmq.Context.instance()
 
@@ -67,7 +73,7 @@ def run(args):
                 continue
 
             if args.real_data:
-                result = process_real_data(msg)
+                result = process_real_data(msg, args.verbose)
                 push_sock.send(result)
             else:
                 result = process_fake_data(msg)

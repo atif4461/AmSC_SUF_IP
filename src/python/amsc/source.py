@@ -75,8 +75,8 @@ def run(args):
                 msg.print_selected(include_tables)
             else:
                 msg.print_short()
-            #socket.send(msg)
-            #print(f"Sent: {msg!r}")
+
+            socket.send(msg.to_arrow())
 
             counter += 1
             next_send += args.interval
