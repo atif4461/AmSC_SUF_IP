@@ -1,7 +1,39 @@
 
+import pyarrow as pa
+import pyarrow.ipc as ipc
+import pandas as pd
+
 class Message:
     def __init__(self, named_dataframes):
         self._named_dataframes = named_dataframes
+
+    def __getitem__(self, key):
+        return self._named_dataframes[key][0]
+
+    @classmethod
+    def from_arrow(cls, serialized: bytes):
+        named_dataframes = {}
+        source = pa.BufferReader(serialized)
+        while source.tell() < source.size():
+            reader = ipc.open_stream(source)
+            table = reader.read_all()
+            name = table.schema.metadata[b"name"].decode()
+            dataframe = table.to_pandas()
+            named_dataframes[name] = (dataframe, -1, -1)
+        return cls(named_dataframes)
+
+
+    def to_arrow(self) -> bytes:
+        sink = pa.BufferOutputStream()
+        for name in self._named_dataframes:
+            df = self._named_dataframes[name][0]
+            table = pa.Table.from_pandas(df)
+            metadata = {b"name": name.encode()}
+            table = table.replace_schema_metadata(metadata)
+            writer = ipc.new_stream(sink, table.schema)
+            writer.write_table(table)
+            writer.close()
+        return sink.getvalue().to_pybytes()
 
     def print_short(self):
         entries_table, _, _ = self._named_dataframes["reconstructedPhysicsEvent"]

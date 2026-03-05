@@ -75,7 +75,6 @@ def run(args):
                 msg.print_selected(include_tables)
             else:
                 msg.print_short()
-            #msg.print_all()
             #socket.send(msg)
             #print(f"Sent: {msg!r}")
 
