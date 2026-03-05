@@ -16,25 +16,35 @@ class HDDMReader:
         self._next_entry = 0
 
     def read_batch(self):
-        print("Calling read_batch")
         batch = []
-        for rec in self._ifs:
-            self._next_entry += 1
-            batch.append(rec)
-            if len(batch) == self._batch_size:
-                return self.convert(batch, self._next_entry)
-
-        # We ran out of events in the file
         if self._loop:
-            # Restart the file reader
-            self._ifs = hddm_r.istream(self._filename)
-            self._next_entry = 0
+            while True:
+                for rec in self._ifs:
+                    batch.append(rec)
+                    if len(batch) == self._batch_size:
+                        starting_entry = self._next_entry
+                        self._next_entry += len(batch)
+                        return self.convert(batch, starting_entry)
 
-        return self.convert(batch, self._next_entry)
+                # Restart the file reader
+                self._ifs = hddm_r.istream(self._filename)
+        else:
+            for rec in self._ifs:
+                batch.append(rec)
+                if len(batch) == self._batch_size:
+                    starting_entry = self._next_entry
+                    self._next_entry += len(batch)
+                    return self.convert(batch, starting_entry)
+            return self.convert(batch, self._next_entry)
 
-    def convert(self, batch, next_entry):
-        print(f"Converting entries {next_entry}..{next_entry+len(batch)-1}")
+
+    def convert(self, batch, starting_entry):
+        if len(batch) == 0:
+            return []
+
+        print(f"Converting entries {starting_entry}..{starting_entry+len(batch)-1}")
         dfs = hddm_r_to_pandas.hddm_r_to_pandas.setup_empty_dataframes(batch)
+        next_entry = starting_entry
         for rec in batch:
             for toplevel_table_name in hddm_r_to_pandas.hddm_r_to_pandas.hddm_children["entry"]:
                 hddm_r_to_pandas.hddm_r_to_pandas.visit(hddm_r_to_pandas.hddm_r_to_pandas.get_child(rec, toplevel_table_name), toplevel_table_name, next_entry, "entry", dfs)
@@ -44,7 +54,7 @@ class HDDMReader:
 
 
     def print_dfs(self, dfs):
-        for table in ["reconstructedPhysicsEvent"]
+        for table_name in ["reconstructedPhysicsEvent"]:
 
             print("----------------------------------------------------")
             df, rows_filled, rows_total = dfs[table_name]
