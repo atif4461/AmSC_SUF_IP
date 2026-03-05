@@ -5,7 +5,7 @@ from . import message
 
 class HDDMReader:
 
-    def __init__(self, filename, batch_size, loop, include_tables):
+    def __init__(self, filename, batch_size, loop):
         schemafile = Path(__file__).parent.parent.parent / "cpp/hddm_r/hddm_r.xml"
         hddm_r_to_pandas.hddm_r_to_pandas.process_schemafile(schemafile)
 
@@ -14,7 +14,6 @@ class HDDMReader:
         self._ifs = hddm_r.istream(filename)
         self._loop = loop
         self._next_entry = 0
-        self._include_tables = include_tables
 
     def read_batch(self):
         batch = []

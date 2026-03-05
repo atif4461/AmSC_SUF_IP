@@ -43,7 +43,7 @@ def run(args):
     else:
         include_tables = None
 
-    reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop, include_tables)
+    reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
 
     context = zmq.Context.instance()
     socket = context.socket(zmq.PUSH)
@@ -69,7 +69,8 @@ def run(args):
             msg = reader.read_batch()
             if not msg:
                 break
-            msg.print_all()
+            msg.print_selected(include_tables)
+            #msg.print_all()
             #socket.send(msg)
             #print(f"Sent: {msg!r}")
 
