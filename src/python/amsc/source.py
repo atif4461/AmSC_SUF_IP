@@ -26,18 +26,24 @@ def add_arguments(parser):
     parser.add_argument("--ejfat", action=argparse.BooleanOptionalAction, default=False, help="Stream over EJFAT load balancer")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
-
+    parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
 
 def run(args):
     print("Running source:")
-    print("  input_filename:", args.input_filename)
-    print("  name:          ", args.name)
-    print("  address:       ", args.address)
-    print("  use_ejfat:     ", args.ejfat)
-    print("  batch_size:    ", args.batch_size)
-    print("  loop:          ", args.loop)
+    print("  input_filename: ", args.input_filename)
+    print("  name:           ", args.name)
+    print("  address:        ", args.address)
+    print("  use_ejfat:      ", args.ejfat)
+    print("  batch_size:     ", args.batch_size)
+    print("  loop:           ", args.loop)
+    print("  include_tables: ", args.include_tables)
 
-    reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
+    if args.include_tables:
+        include_tables = args.include_tables.split(",")
+    else:
+        include_tables = None
+
+    reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop, include_tables)
 
     context = zmq.Context.instance()
     socket = context.socket(zmq.PUSH)
@@ -61,9 +67,9 @@ def run(args):
 
         if now >= next_send:
             msg = reader.read_batch()
-            if len(msg) == 0:
+            if not msg:
                 break
-            print("Sending events... which?")
+            msg.print_all()
             #socket.send(msg)
             #print(f"Sent: {msg!r}")
 

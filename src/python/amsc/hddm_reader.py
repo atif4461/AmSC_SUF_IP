@@ -1,11 +1,11 @@
 import hddm_r
 from pathlib import Path
 from . import hddm_r_to_pandas
+from . import message
 
 class HDDMReader:
 
-    def __init__(self, filename, batch_size, loop):
-        print("Hello from HDDMReader")
+    def __init__(self, filename, batch_size, loop, include_tables):
         schemafile = Path(__file__).parent.parent.parent / "cpp/hddm_r/hddm_r.xml"
         hddm_r_to_pandas.hddm_r_to_pandas.process_schemafile(schemafile)
 
@@ -14,6 +14,7 @@ class HDDMReader:
         self._ifs = hddm_r.istream(filename)
         self._loop = loop
         self._next_entry = 0
+        self._include_tables = include_tables
 
     def read_batch(self):
         batch = []
@@ -40,7 +41,7 @@ class HDDMReader:
 
     def convert(self, batch, starting_entry):
         if len(batch) == 0:
-            return []
+            return None
 
         print(f"Converting entries {starting_entry}..{starting_entry+len(batch)-1}")
         dfs = hddm_r_to_pandas.hddm_r_to_pandas.setup_empty_dataframes(batch)
@@ -49,19 +50,6 @@ class HDDMReader:
             for toplevel_table_name in hddm_r_to_pandas.hddm_r_to_pandas.hddm_children["entry"]:
                 hddm_r_to_pandas.hddm_r_to_pandas.visit(hddm_r_to_pandas.hddm_r_to_pandas.get_child(rec, toplevel_table_name), toplevel_table_name, next_entry, "entry", dfs)
             next_entry += 1
-        self.print_dfs(dfs)
-        return dfs
+        return message.Message(dfs)
 
-
-    def print_dfs(self, dfs):
-        for table_name in ["reconstructedPhysicsEvent"]:
-
-            print("----------------------------------------------------")
-            df, rows_filled, rows_total = dfs[table_name]
-            print(f"{table_name}")
-            if not df.empty:
-                print("----------------------------------------------------")
-                print(df)
-
-        print("----------------------------------------------------")
 
