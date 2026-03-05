@@ -27,6 +27,7 @@ def add_arguments(parser):
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
+    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 def run(args):
     print("Running source:")
@@ -37,6 +38,7 @@ def run(args):
     print("  batch_size:     ", args.batch_size)
     print("  loop:           ", args.loop)
     print("  include_tables: ", args.include_tables)
+    print("  verbose:        ", args.verbose)
 
     if args.include_tables:
         include_tables = args.include_tables.split(",")
@@ -69,7 +71,10 @@ def run(args):
             msg = reader.read_batch()
             if not msg:
                 break
-            msg.print_selected(include_tables)
+            if args.verbose:
+                msg.print_selected(include_tables)
+            else:
+                msg.print_short()
             #msg.print_all()
             #socket.send(msg)
             #print(f"Sent: {msg!r}")
