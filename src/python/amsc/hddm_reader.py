@@ -1,0 +1,57 @@
+import hddm_r
+from pathlib import Path
+from . import hddm_r_to_pandas
+
+class HDDMReader:
+
+    def __init__(self, filename, batch_size, loop):
+        print("Hello from HDDMReader")
+        schemafile = Path(__file__).parent.parent.parent / "cpp/hddm_r/hddm_r.xml"
+        hddm_r_to_pandas.hddm_r_to_pandas.process_schemafile(schemafile)
+
+        self._batch_size = batch_size
+        self._filename = filename
+        self._ifs = hddm_r.istream(filename)
+        self._loop = loop
+        self._next_entry = 0
+
+    def read_batch(self):
+        print("Calling read_batch")
+        batch = []
+        for rec in self._ifs:
+            self._next_entry += 1
+            batch.append(rec)
+            if len(batch) == self._batch_size:
+                return self.convert(batch, self._next_entry)
+
+        # We ran out of events in the file
+        if self._loop:
+            # Restart the file reader
+            self._ifs = hddm_r.istream(self._filename)
+            self._next_entry = 0
+
+        return self.convert(batch, self._next_entry)
+
+    def convert(self, batch, next_entry):
+        print(f"Converting entries {next_entry}..{next_entry+len(batch)-1}")
+        dfs = hddm_r_to_pandas.hddm_r_to_pandas.setup_empty_dataframes(batch)
+        for rec in batch:
+            for toplevel_table_name in hddm_r_to_pandas.hddm_r_to_pandas.hddm_children["entry"]:
+                hddm_r_to_pandas.hddm_r_to_pandas.visit(hddm_r_to_pandas.hddm_r_to_pandas.get_child(rec, toplevel_table_name), toplevel_table_name, next_entry, "entry", dfs)
+            next_entry += 1
+        self.print_dfs(dfs)
+        return dfs
+
+
+    def print_dfs(self, dfs):
+        for table in ["reconstructedPhysicsEvent"]
+
+            print("----------------------------------------------------")
+            df, rows_filled, rows_total = dfs[table_name]
+            print(f"{table_name}")
+            if not df.empty:
+                print("----------------------------------------------------")
+                print(df)
+
+        print("----------------------------------------------------")
+
