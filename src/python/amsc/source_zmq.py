@@ -1,40 +1,32 @@
 
 import argparse
-import zmq
 import time
 import signal
 import sys
 import pandas
+import zmq
 
 from . import hddm_reader
 
 ADDRESS = "tcp://*:5555"
 
 
-def make_fake_data(counter: int) -> bytes:
-    # Fake data goes here
-
-
-    payload = f"message #{counter} @ {time.time():.3f}"
-    return payload.encode("utf-8")
-
 def add_arguments(parser):
     parser.add_argument("input_filename", help="Input REST filename")
     parser.add_argument("--name", default="source0", help="Name for this source")
-    parser.add_argument("--address", default=ADDRESS, help="Address of load balancer or ZMQ socket")
+    parser.add_argument("--address", default=ADDRESS, help="Address ZMQ socket")
     parser.add_argument("--interval", type=float, default=1.0, help="Interval [s] between sends")
-    parser.add_argument("--ejfat", action=argparse.BooleanOptionalAction, default=False, help="Stream over EJFAT load balancer")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
+
 def run(args):
-    print("Running source:")
+    print("Running ZMQ source:")
     print("  input_filename: ", args.input_filename)
     print("  name:           ", args.name)
     print("  address:        ", args.address)
-    print("  use_ejfat:      ", args.ejfat)
     print("  batch_size:     ", args.batch_size)
     print("  loop:           ", args.loop)
     print("  include_tables: ", args.include_tables)
@@ -87,4 +79,5 @@ def run(args):
     socket.close()
     context.term()
     print("Exited cleanly.")
+
 

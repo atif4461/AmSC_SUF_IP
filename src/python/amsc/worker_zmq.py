@@ -10,20 +10,12 @@ PUSH_ADDRESS = "tcp://localhost:5556"
 
 def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
-    parser.add_argument("--input-address", default=PULL_ADDRESS, help="Input address of load balancer or ZMQ socket")
-    parser.add_argument("--output-address", default=PUSH_ADDRESS, help="Output address of ZMQ socket")
-    parser.add_argument("--ejfat", action=argparse.BooleanOptionalAction, default=False, help="Use EJFAT load balancer")
-    parser.add_argument("--real-data", action=argparse.BooleanOptionalAction, default=False, help="Use real GlueX data")
+    parser.add_argument("--input-address", default=PULL_ADDRESS, help="Address of upstream ZMQ socket")
+    parser.add_argument("--output-address", default=PUSH_ADDRESS, help="Address of downstream ZMQ socket")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
-def process_fake_data(data: bytes) -> bytes:
-    # Example: uppercase transform
-    print(f"Received {len(data)} bytes: {data!r}")
-    result = data.upper()
-    print(f"Sending: {result!r}")
-    return result
 
-def process_real_data(serialized_data: bytes, verbose: bool) -> bytes:
+def process_data(serialized_data: bytes, verbose: bool) -> bytes:
     print(f"Received {len(serialized_data)} bytes")
     msg = message.Message.from_arrow(serialized_data)
     if verbose:
@@ -32,13 +24,14 @@ def process_real_data(serialized_data: bytes, verbose: bool) -> bytes:
         msg.print_short()
     return b"Thank you so much!"
 
+
 def run(args):
     print("Running worker:")
     print("  name:           ", args.name)
     print("  input_address:  ", args.input_address)
     print("  output_address: ", args.output_address)
-    print("  ejfat:          ", args.ejfat)
-    print("  real_data:      ", args.real_data)
+    print("  verbose:        ", args.verbose)
+    print()
 
     context = zmq.Context.instance()
 
@@ -63,7 +56,7 @@ def run(args):
 
     while running:
 
-        print("Polling for incoming events...")
+        print("Waiting for incoming events...")
         events = dict(poller.poll(timeout=1000))  # 1s timeout
 
         if pull_sock in events:
@@ -72,16 +65,11 @@ def run(args):
             except zmq.Again:
                 continue
 
-            if args.real_data:
-                result = process_real_data(msg, args.verbose)
-                push_sock.send(result)
-            else:
-                result = process_fake_data(msg)
-                push_sock.send(result)
+            result = process_data(msg, args.verbose)
+            push_sock.send(result)
 
     pull_sock.close()
     push_sock.close()
     context.term()
     print("Exited cleanly.")
-
 
