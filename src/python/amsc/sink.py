@@ -8,7 +8,8 @@ ADDRESS = "tcp://*:5556"
 
 def add_arguments(parser):
     parser.add_argument("--input-address", default=ADDRESS, help="Input address of ZMQ socket")
-    parser.add_argument("--real-data", action=argparse.BooleanOptionalAction, default=False, help="Use real GlueX data")
+    parser.add_argument("--output-bucket", default=ADDRESS, help="Input address of ZMQ socket")
+    parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
 def process_fake_data(data: bytes) -> None:
