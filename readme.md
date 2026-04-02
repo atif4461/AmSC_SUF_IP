@@ -16,49 +16,46 @@ interested in contributing or using any code you find here, please contact the a
 This work is licensed under a permissive BSD-like license granting free use and redistribution, subject to attribution and disclaimer requirements, with an added clause reserving full government-use rights due to federal funding.
 
 
-## Building
-
+## How to run
 
 ```bash
 
-# If the outer install is spack, it will leak things into the venv
-unset PYTHONPATH
+# Launch an interactive SLURM job
+srun --exclusive --pty /bin/bash
 
-# Clear command path cache, otherwise you'll
-# end up using the wrong interpreter all the time
-hash -r
+# Download the GlueX dataset
+wget https://zenodo.org/records/18024575/files/dana_rest_011650_000.hddm
 
-# Create a venv where everything gets installed
-python -m venv venv
-source venv/bin/activate
+# Set the initial EJFAT credentials
+export EJFAT_URI=ejfats://TOKEN@ejfat-1.jlab.org:18347
 
-# Install the build system (only necessary due to no-isolation later)
-python -m pip install scikit-build-core pybind11
+# To reserve an EJFAT load balancer instance
+amsc.sh reserve-ejfat
 
-# Build without isolation so that the IDE can find pybind11 dependency
-python -m pip install --no-build-isolation -e .
+# Obtain the reservation credentials
+source instance.env
 
-# Run python tests
-python -m pytest
+# To run the ejfat source
+amsc.sh run-ejfat-source dana_rest_011650_000.hddm
 
-# Run ctests
-ctest --output-on-failure --progress --test-dir build/cp*
+# To run an ejfat worker
+amsc.sh run-ejfat-worker
+
+# To launch a shell
+amsc-shell.sh
+
+```
+
+
+## How to build
+
+```bash
+
+# Use the Makefile to build and push the container
+# The Makefile calls `podman build` on `amsc.Containerfile`, which calls `pip install`, which calls CMake
+# But CMake requires a very custom environment, hence the container
+make
 
 ```
 
-### Building HDDM
-```
-git clone https://github.com/JeffersonLab/HDDM
-cd HDDM
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=`pwd` -DENABLE_ISTREAM_OVER_HTTP=Off -DENABLE_ISTREAM_OVER_XROOTD=Off
-```
-
-## Usage
-
-``` bash
-
-# Run CLI
-amsc-cli
-
-```
 

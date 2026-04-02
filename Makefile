@@ -31,3 +31,5 @@ build_rest_lib:
 	hddm-py ..../../schemas/hddm_r.xml
 	python setup_hddm_r.py
 
+download_gluex_data:
+	wget https://zenodo.org/records/18024575/files/dana_rest_011650_000.hddm?download=1
