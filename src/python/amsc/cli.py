@@ -1,12 +1,17 @@
 
 import argparse
-from amsc import source_ejfat,source_zmq,worker_ejfat,worker_zmq,sink
+from amsc import source_ejfat,source_zmq,worker_ejfat,worker_zmq,sink,ejfat_admin
 
 
 def main(argv=None):
 
     parser = argparse.ArgumentParser(prog="amsc", description="A unified interface for Nathan's AmSC adventures")
     subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # register-ejfat-instance
+    reg_parser = subparsers.add_parser("reserve-ejfat", help="Reserve an EJFAT load balancer instance")
+    ejfat_admin.add_arguments(reg_parser)
+    reg_parser.set_defaults(func=ejfat_admin.run)
 
     # run-zmq-source
     source_parser = subparsers.add_parser("run-zmq-source", help="Run source process over ZMQ")
