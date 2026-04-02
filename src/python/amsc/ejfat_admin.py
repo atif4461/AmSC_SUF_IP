@@ -22,6 +22,8 @@ def run(args):
         capture_output=True, text=True, check=True
     )
 
+    print(result.stdout)
+
     with open("instance.env", "w") as f:
         f.write(result.stdout)
 
