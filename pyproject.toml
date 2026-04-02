@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "NP demonstrator for AmSC-SUF"
 readme = "readme.md"
 requires-python = ">=3.9"
-dependencies = ["pyzmq", "pytest", "pandas"]
+dependencies = ["pyzmq", "pytest", "pandas", "pyarrow"]
 
 [project.scripts]
 amsc = "amsc.cli:main"

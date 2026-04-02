@@ -1,5 +1,5 @@
 
-FROM docker.io/ibaldin/e2sar:0.3.0a3
+FROM docker.io/ibaldin/e2sar:0.3.1
 
 # -------------
 # Toolbx fixes

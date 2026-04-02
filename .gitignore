@@ -4,5 +4,6 @@ bin/
 lib/
 share/
 build*/
+venv/
 
 *.so
