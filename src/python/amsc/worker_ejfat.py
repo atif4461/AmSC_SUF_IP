@@ -1,4 +1,3 @@
-
 import e2sar_py
 import zmq
 import os
@@ -40,18 +39,27 @@ def run(args):
     print("  verbose:        ", args.verbose)
     print()
 
-    # Parse EJFAT_URI
-    ejfat_uri = e2sar_py.EjfatURI(ejfat_uri_str, e2sar_py.EjfatURI.TokenType.instance)
+    USE_IPV6 = False
 
-    # Create the Segmenter. Don't worry about multithreading here yet
+    # Parse EJFAT_URI
+    ejfat_uri = e2sar_py.EjfatURI(args.ejfat_uri, e2sar_py.EjfatURI.TokenType.instance, USE_IPV6)
+
+    # Create the reassembler
     thread_count = 1
+    flags = e2sar_py.DataPlane.Reassembler.ReassemblerFlags()
+    flags.useCP = True
+    flags.useHostAddress = True
+    flags.validateCert = False
+
     reassembler = e2sar_py.DataPlane.Reassembler(
-        args.ejfat_uri,
+        ejfat_uri,
         args.input_port,
-        thread_count
+        thread_count,
+        flags,
+        v6 = USE_IPV6
     )
 
-    print("Created E2SAR segmenter:")
+    print("Created E2SAR reassembler:")
     print("    data_ip=", reassembler.get_dataIP())
     print("    port_range=", reassembler.get_portRange())
     print("    recv_ports=", reassembler.get_recvPorts())

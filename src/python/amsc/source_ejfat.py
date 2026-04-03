@@ -9,7 +9,7 @@ import os
 import e2sar_py
 from . import hddm_reader
 
-ejfat_uri_str = os.getenv("EJFAT_URI"),
+ejfat_uri_str = os.getenv("EJFAT_URI")
 
 
 def add_arguments(parser):
@@ -34,13 +34,17 @@ def run(args):
     print("  include_tables: ", args.include_tables)
     print("  verbose:        ", args.verbose)
 
+    VALIDATE = False
+    USE_IPV6 = False
+    USE_HOST_ADDRESS = True
+
+
     # Parse EJFAT_URI
-    ejfat_uri = e2sar_py.EjfatURI(ejfat_uri_str, e2sar_py.EjfatURI.TokenType.instance)
+    ejfat_uri = e2sar_py.EjfatURI(ejfat_uri_str, e2sar_py.EjfatURI.TokenType.instance, False)
 
     # Connect to the control plane and add self as a sender
-    # TODO: Allocate an instance iff one hasn't been allocated for us
-    manager = e2sar_py.ControlPlane.LBManager(ejfat_uri)
-    result = manager.add_sender_self(False)
+    manager = e2sar_py.ControlPlane.LBManager(ejfat_uri, VALIDATE, USE_HOST_ADDRESS)
+    result = manager.add_sender_self(USE_IPV6)
 
     if result.has_error():
         print("Error registering as sender: ", result.error().message)
@@ -51,10 +55,15 @@ def run(args):
     event_source_id = 0 #data_id
 
     # Create the Segmenter. Don't worry about multithreading here yet.
+    flags = e2sar_py.DataPlane.Segmenter.SegmenterFlags()
+    flags.useCP = True
+    flags.dpV6 = USE_IPV6
+
     segmenter = e2sar_py.DataPlane.Segmenter(
         ejfat_uri,
         data_id,
-        event_source_id
+        event_source_id,
+        flags
     )
 
     # Fire up the segmenter
