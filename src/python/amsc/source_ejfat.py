@@ -89,7 +89,7 @@ def run(args):
         if not msg:
             break
         if args.verbose:
-            msg.print_selected(include_tables)
+            msg.print_selected(args.include_tables)
         else:
             msg.print_short()
 
@@ -97,9 +97,12 @@ def run(args):
         data = msg.to_arrow()
 
         # Send message
-        segmenter.addToSendQueue(data, len(data), _eventNum=event_nr)
+        #res = segmenter.addToSendQueue(data, len(data), _eventNum=event_nr)
+        res = segmenter.sendEvent(data, len(data), _eventNum=event_nr)
+        if res.has_error():
+            print("Error:", res.error())
 
-        time.sleep(1) # seconds
+        time.sleep(args.interval) # seconds
         event_nr += 1
 
     # Shut down segmenter threads
