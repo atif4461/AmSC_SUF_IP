@@ -10,6 +10,9 @@ class Message:
     def __getitem__(self, key):
         return self._named_dataframes[key][0]
 
+    def keys(self):
+        return self._named_dataframes.keys()
+
     @classmethod
     def from_arrow(cls, serialized: bytes):
         named_dataframes = {}
