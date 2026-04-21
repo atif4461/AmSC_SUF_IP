@@ -1,6 +1,6 @@
 
 import argparse
-from amsc import source_ejfat,source_zmq,worker_ejfat,worker_zmq,sink,ejfat_admin
+from amsc import source_ejfat,worker_ejfat,sink,ejfat_admin
 
 
 def main(argv=None):
@@ -13,23 +13,13 @@ def main(argv=None):
     ejfat_admin.add_arguments(reg_parser)
     reg_parser.set_defaults(func=ejfat_admin.run)
 
-    # run-zmq-source
-    source_parser = subparsers.add_parser("run-zmq-source", help="Run source process over ZMQ")
-    source_zmq.add_arguments(source_parser)
-    source_parser.set_defaults(func=source_zmq.run)
-
-    # run-ejfat-source
-    source_parser = subparsers.add_parser("run-ejfat-source", help="Run source process over EJFAT")
+    # run-source
+    source_parser = subparsers.add_parser("run-source", help="Run source process")
     source_ejfat.add_arguments(source_parser)
     source_parser.set_defaults(func=source_ejfat.run)
 
-    # run-zmq-worker
-    worker_parser = subparsers.add_parser("run-zmq-worker", help="Run worker process over ZMQ")
-    worker_zmq.add_arguments(worker_parser)
-    worker_parser.set_defaults(func=worker_zmq.run)
-
-    # run-ejfat-worker
-    worker_parser = subparsers.add_parser("run-ejfat-worker", help="Run worker process over EJFAT")
+    # run-worker
+    worker_parser = subparsers.add_parser("run-worker", help="Run worker process")
     worker_ejfat.add_arguments(worker_parser)
     worker_parser.set_defaults(func=worker_ejfat.run)
 
