@@ -1,6 +1,6 @@
 
 import argparse
-from amsc import source_ejfat,worker_ejfat,sink,ejfat_admin
+from amsc import reserver,source,worker,sink
 
 
 def main(argv=None):
@@ -8,20 +8,20 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="amsc", description="A unified interface for Nathan's AmSC adventures")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
-    # register-ejfat-instance
-    reg_parser = subparsers.add_parser("reserve-ejfat", help="Reserve an EJFAT load balancer instance")
-    ejfat_admin.add_arguments(reg_parser)
-    reg_parser.set_defaults(func=ejfat_admin.run)
+    # reserve
+    res_parser = subparsers.add_parser("reserve", help="Reserve an EJFAT load balancer instance")
+    reserver.add_arguments(res_parser)
+    res_parser.set_defaults(func=reserver.run)
 
     # run-source
     source_parser = subparsers.add_parser("run-source", help="Run source process")
-    source_ejfat.add_arguments(source_parser)
-    source_parser.set_defaults(func=source_ejfat.run)
+    source.add_arguments(source_parser)
+    source_parser.set_defaults(func=source.run)
 
     # run-worker
     worker_parser = subparsers.add_parser("run-worker", help="Run worker process")
-    worker_ejfat.add_arguments(worker_parser)
-    worker_parser.set_defaults(func=worker_ejfat.run)
+    worker.add_arguments(worker_parser)
+    worker_parser.set_defaults(func=worker.run)
 
     # run-sink
     sink_parser = subparsers.add_parser("run-sink", help="Run sink process")

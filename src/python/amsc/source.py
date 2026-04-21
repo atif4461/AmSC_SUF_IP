@@ -7,15 +7,13 @@ import pandas
 import os
 
 import e2sar_py
-from . import hddm_reader
-
-ejfat_uri_str = os.getenv("EJFAT_URI")
+from amsc import hddm_reader,credentials
 
 
 def add_arguments(parser):
     parser.add_argument("input_filename", help="Input REST filename")
+    parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--name", default="source0", help="Name for this source")
-    parser.add_argument("--address", default=ejfat_uri_str, help="Address of EJFAT load balancer")
     parser.add_argument("--interval", type=float, default=1.0, help="Interval [s] between sends")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
@@ -27,20 +25,20 @@ def run(args):
 
     print("Running EJFAT source:")
     print("  input_filename: ", args.input_filename)
+    print("  credential_dir: ", args.credential_dir)
     print("  name:           ", args.name)
-    print("  address:        ", args.address)
     print("  batch_size:     ", args.batch_size)
     print("  loop:           ", args.loop)
     print("  include_tables: ", args.include_tables)
     print("  verbose:        ", args.verbose)
+    print()
 
     VALIDATE = False
     USE_IPV6 = False
     USE_HOST_ADDRESS = True
 
-
-    # Parse EJFAT_URI
-    ejfat_uri = e2sar_py.EjfatURI(ejfat_uri_str, e2sar_py.EjfatURI.TokenType.instance, False)
+    ejfat_uri = credentials.get_ejfat_uri_raw(args.credential_dir)
+    print("  ejfat_uri_raw:  ", ejfat_uri)
 
     # Connect to the control plane and add self as a sender
     manager = e2sar_py.ControlPlane.LBManager(ejfat_uri, VALIDATE, USE_HOST_ADDRESS)

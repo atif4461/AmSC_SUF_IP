@@ -5,17 +5,15 @@ import signal
 import sys
 import socket
 import numpy
-from amsc import message
+from amsc import message,credentials
 
-INPUT_ADDRESS = "tcp://*:5556"
 min_entry_observed = -1
 max_entry_observed = -1
 missing_events = set()
 
 def add_arguments(parser):
+    parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
-    parser.add_argument("--input-address", default=INPUT_ADDRESS, help="Address of upstream ZMQ socket (owned by sink)")
-    #parser.add_argument("--output-address", help="Address of downstream ZMQ socket (owned by source)")
 
 
 def process_data(data: bytes, verbose) -> None:
@@ -57,19 +55,23 @@ def process_data(data: bytes, verbose) -> None:
 def run(args):
 
     print("Running sink:")
-    print("  input_address: ", args.input_address)
-    print("  verbose:       ", args.verbose)
+    print("  credential_dir: ", args.credential_dir)
+    print("  verbose:        ", args.verbose)
+
+    zmq_uri_sink = put_zmq_address(args.credential_dir)
+    print()
+    print("  zmq_uri_sink:  ", zmq_uri_sink)
 
     context = zmq.Context.instance()
     socket = context.socket(zmq.PULL)
-    socket.bind(args.input_address)
+    socket.bind("tcp://0.0.0.0:5555")
 
     running = True
 
     def shutdown(signum, frame):
         nonlocal running
         running = False
-        print("\nShutting down...")
+        print("")
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)

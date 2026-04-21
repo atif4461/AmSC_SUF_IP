@@ -4,7 +4,8 @@ import os
 import signal
 import time
 import argparse
-from . import message
+
+from amsc import message,credentials
 
 
 EJFAT_URI_STR = os.getenv("EJFAT_URI")
@@ -13,9 +14,8 @@ PUSH_ADDRESS = "tcp://localhost:5556"
 
 def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
-    parser.add_argument("--ejfat-uri", default=EJFAT_URI_STR, help="Address of EJFAT load balancer")
+    parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--input-port", type=int, default=STARTING_PORT, help="Port for EJFAT to stream to")
-    parser.add_argument("--output-address", default=PUSH_ADDRESS, help="Address of downstream ZMQ socket")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -37,16 +37,18 @@ def run(args):
 
     print("Running worker:")
     print("  name:           ", args.name)
-    print("  ejfat_uri:      ", args.ejfat_uri)
+    print("  credential_dir: ", args.credential_dir)
     print("  input_port:     ", args.input_port)
-    print("  output_address:   ", args.output_address)
     print("  verbose:        ", args.verbose)
-    print()
 
     USE_IPV6 = False
 
-    # Parse EJFAT_URI
-    ejfat_uri = e2sar_py.EjfatURI(args.ejfat_uri, e2sar_py.EjfatURI.TokenType.instance, USE_IPV6)
+    ejfat_uri = get_ejfat_uri_raw(args.credential_dir)
+    zmq_uri = get_zmq_address(args.credential_dir)
+
+    print("   ejfat_uri_raw: ", ejfat_uri)
+    print("   zmq_uri_sink:  ", zmq_uri)
+    print()
 
     # Create the reassembler
     thread_count = 4
