@@ -77,8 +77,9 @@ def run(args):
         ejfat_sender.send(data, event_nr)
 
         # Quickly check if we've received something
-        data = ejfat_receiver.recv(0)
-        print("Received: ", data)
+        evt_length, evt_bytes, evt_nr, data_id = ejfat_receiver.recv(0)
+        if evt_length >= 0:
+            print(f"Received response: {evt_bytes}")
 
         time.sleep(args.interval) # seconds
         event_nr += 1
