@@ -5,12 +5,10 @@ import signal
 import time
 import argparse
 
-from amsc import message,credentials
+from amsc import message,credentials,ejfat
 
 
-EJFAT_URI_STR = os.getenv("EJFAT_URI")
 STARTING_PORT = 10000
-PUSH_ADDRESS = "tcp://localhost:5556"
 
 def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
@@ -43,43 +41,20 @@ def run(args):
 
     USE_IPV6 = False
 
-    ejfat_uri = get_ejfat_uri_raw(args.credential_dir)
+    ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
     zmq_uri = get_zmq_address(args.credential_dir)
 
-    print("   ejfat_uri_raw: ", ejfat_uri)
+    print("   ejfat_uri_raw: ", ejfat_uri_raw)
     print("   zmq_uri_sink:  ", zmq_uri)
     print()
 
-    # Create the reassembler
-    thread_count = 4
-    flags = e2sar_py.DataPlane.Reassembler.ReassemblerFlags()
-    flags.useCP = True
-    flags.validateCert = False
-    flags.eventTimeout_ms = 3000
+    # Connect to the zmq socket
+    push_sock = context.socket(zmq.PUSH)
+    push_sock.connect(zmq_uri)
 
-    reassembler = e2sar_py.DataPlane.Reassembler(
-        ejfat_uri,
-        args.input_port,
-        thread_count,
-        flags
-    )
-
-    print("Created E2SAR reassembler:")
-    print("    data_ip=", reassembler.get_dataIP())
-    print("    port_range=", reassembler.get_portRange())
-    print("    recv_ports=", reassembler.get_recvPorts())
-
-    # Register worker
-    print(f"Registering worker '{args.name}'...")
-    result = reassembler.registerWorker(args.name)
-    if result.has_error():
-        print("Error registering as worker: ", result.error().message)
-        exit(1)
-
-    # Fire up the reassembler
-    print("Launching threads...")
-    reassembler.OpenAndStart()
-    print("Threads are now running")
+    # Connect to EJFAT
+    receiver = ejfat.EjfatReceiver(args.name, ejfat_uri_raw, args.input_port)
+    receiver.connect()
 
     # Loop until killed
     running = True
@@ -97,18 +72,19 @@ def run(args):
 
         # Receive message
         wait_ms = 3000
-        evt_length, evt_bytes, evt_nr, data_id = reassembler.recvEventBytes(wait_ms)
+        evt_length, evt_bytes, evt_nr, data_id = receiver.recv(wait_ms)
 
         if evt_length >= 0:
             print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
-            output_message = process_data(evt_bytes, args.verbose)
+            result = process_data(evt_bytes, args.verbose)
+            push_sock.send(result)
 
+    print("Closing ZMQ socket...")
+    push_sock.close()
+    context.term()
 
-    print("Deregistering worker...")
-    reassembler.deregisterWorker()
+    receiver.disconnect()
 
-    print("Joining threads...")
-    reassembler.stopThreads()
 
     print("Exited cleanly.")
 

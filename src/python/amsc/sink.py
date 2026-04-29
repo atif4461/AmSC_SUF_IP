@@ -5,6 +5,8 @@ import signal
 import sys
 import socket
 import numpy
+import e2sar_py
+
 from amsc import message,credentials
 
 min_entry_observed = -1
@@ -16,7 +18,7 @@ def add_arguments(parser):
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
-def process_data(data: bytes, verbose) -> None:
+def process_data(data: bytes, verbose) -> bytes:
     global max_entry_observed
     global min_entry_observed
     global missing_events
@@ -59,14 +61,22 @@ def run(args):
     print("  verbose:        ", args.verbose)
 
 
+
+    # Fire up ZMQ
     context = zmq.Context.instance()
     socket = context.socket(zmq.PULL)
     socket.bind("tcp://0.0.0.0:5555")
 
     # We want to bind the socket _before_ we notify the workers
-    zmq_uri_sink = put_zmq_address(args.credential_dir)
+    zmq_uri_sink = credentials.put_zmq_address(args.credential_dir)
     print()
     print("  zmq_uri_sink:  ", zmq_uri_sink)
+
+    # Fire up EJFAT
+    ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
+    print("  ejfat_uri_processed:  ", ejfat_uri_processed)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_processed)
+    ejfat_sender.connect()
 
     running = True
 
@@ -81,6 +91,7 @@ def run(args):
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
 
+
     while running:
         print("Polling for incoming events...")
         events = dict(poller.poll(timeout=1000))  # 1s timeout
@@ -88,7 +99,8 @@ def run(args):
         if socket in events:
             try:
                 msg = socket.recv(flags=zmq.NOBLOCK)
-                result = process_data(msg, args.verbose)
+                result = process_data(msg, args.verbose) # Returns bytes
+                ejfat_sender.send(result)
 
             except zmq.Again:
                 # No message available (race with poll)
@@ -96,6 +108,9 @@ def run(args):
 
     socket.close()
     context.term()
+
+    ejfat_sender.disconnect()
+
     print("Exited cleanly.")
 
 

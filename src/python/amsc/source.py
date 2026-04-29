@@ -7,7 +7,7 @@ import pandas
 import os
 
 import e2sar_py
-from amsc import hddm_reader,credentials
+from amsc import hddm_reader,credentials,ejfat
 
 
 def add_arguments(parser):
@@ -33,41 +33,20 @@ def run(args):
     print("  verbose:        ", args.verbose)
     print()
 
-    VALIDATE = False
-    USE_IPV6 = False
-    USE_HOST_ADDRESS = True
 
-    ejfat_uri = credentials.get_ejfat_uri_raw(args.credential_dir)
-    print("  ejfat_uri_raw:  ", ejfat_uri)
+    ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
+    print("  ejfat_uri_raw:  ", ejfat_uri_raw)
 
-    # Connect to the control plane and add self as a sender
-    manager = e2sar_py.ControlPlane.LBManager(ejfat_uri, VALIDATE, USE_HOST_ADDRESS)
-    result = manager.add_sender_self(USE_IPV6)
+    ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
+    print("  ejfat_uri_processed:  ", ejfat_uri_processed)
 
-    if result.has_error():
-        print("Error registering as sender: ", result.error().message)
-        exit(1)
+    ejfat_sender = EjfatSender(ejfat_uri_raw)
+    sender.connect()
 
-    # TODO: Not sure what event_source_id is and how it differs from data_id
-    data_id = 0
-    event_source_id = 0 #data_id
+    ejfat_receiver = EjfatReceiver(ejfat_uri_processed)
+    receiver.connect()
 
-    # Create the Segmenter. Don't worry about multithreading here yet.
-    flags = e2sar_py.DataPlane.Segmenter.SegmenterFlags()
-    flags.useCP = True
-    flags.dpV6 = USE_IPV6
-
-    segmenter = e2sar_py.DataPlane.Segmenter(
-        ejfat_uri,
-        data_id,
-        event_source_id,
-        flags
-    )
-
-    # Fire up the segmenter
-    segmenter.OpenAndStart()
-
-    # Fire up the reader
+    # Fire up the HDDM reader
     reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
 
     # Loop until killed
@@ -95,18 +74,18 @@ def run(args):
         data = msg.to_arrow()
 
         # Send message
-        #res = segmenter.addToSendQueue(data, len(data), _eventNum=event_nr)
-        res = segmenter.sendEvent(data, len(data), _eventNum=event_nr)
-        if res.has_error():
-            print("Error:", res.error())
+        ejfat_sender.send(data, event_nr)
+
+        # Quickly check if we've received something
+        data = ejfat_receiver.recv(0)
+        print("Received: ", data)
 
         time.sleep(args.interval) # seconds
         event_nr += 1
 
-    # Shut down segmenter threads
-    print("Joining threads...")
-    segmenter.stopThreads()
-    print("Shutdown complete.")
+
+    ejfat_sender.disconnect()
+    ejfat_receiver.disconnect()
 
 
 
