@@ -8,6 +8,7 @@ from amsc import credentials
 ejfat_uri_str = os.getenv("EJFAT_URI")
 
 def add_arguments(parser):
+    parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--address", default=ejfat_uri_str, help="Address of EJFAT load balancer")
     parser.add_argument("--name", default="amsc_demo_2.1", help="Name of reservation")
     parser.add_argument("--duration", default="01:00:00", help="Duration of reservation")
@@ -15,9 +16,10 @@ def add_arguments(parser):
 def run(args):
 
     print("Reserving EJFAT load balancer instance")
-    print("  address:  ", args.address)
-    print("  name:     ", args.name)
-    print("  duration: ", args.duration)
+    print("  credential_dir:  ", args.credential_dir)
+    print("  address:         ", args.address)
+    print("  name:            ", args.name)
+    print("  duration:        ", args.duration)
 
     if args.address is None:
         print("Error: EJFAT_URI was not provided via $EJFAT_URI or --address")

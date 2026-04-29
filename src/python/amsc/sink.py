@@ -58,13 +58,15 @@ def run(args):
     print("  credential_dir: ", args.credential_dir)
     print("  verbose:        ", args.verbose)
 
-    zmq_uri_sink = put_zmq_address(args.credential_dir)
-    print()
-    print("  zmq_uri_sink:  ", zmq_uri_sink)
 
     context = zmq.Context.instance()
     socket = context.socket(zmq.PULL)
     socket.bind("tcp://0.0.0.0:5555")
+
+    # We want to bind the socket _before_ we notify the workers
+    zmq_uri_sink = put_zmq_address(args.credential_dir)
+    print()
+    print("  zmq_uri_sink:  ", zmq_uri_sink)
 
     running = True
 
