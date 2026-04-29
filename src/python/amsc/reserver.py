@@ -3,32 +3,32 @@ import subprocess
 import os
 import argparse
 import sys
+import pathlib
+import e2sar_py
 from amsc import credentials
-
-ejfat_uri_str = os.getenv("EJFAT_URI")
 
 def add_arguments(parser):
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--address", default=ejfat_uri_str, help="Address of EJFAT load balancer")
     parser.add_argument("--name", default="amsc_demo_2.1", help="Name of reservation")
     parser.add_argument("--duration", default="01:00:00", help="Duration of reservation")
+
 
 def run(args):
 
     print("Reserving EJFAT load balancer instance")
     print("  credential_dir:  ", args.credential_dir)
-    print("  address:         ", args.address)
     print("  name:            ", args.name)
     print("  duration:        ", args.duration)
 
-    if args.address is None:
-        print("Error: EJFAT_URI was not provided via $EJFAT_URI or --address")
-        sys.exit(1)
+    reserve_ejfat(args.credential_dir, args.name, args.duration)
 
-    # TODO: Check that file doesn't already exist
+
+def reserve_ejfat(credential_dir, name, duration):
+
+    admin_token = get_ejfat_uri(credential_dir, "ejfat_uri_admin.txt", e2sar_py.EjfatURI.TokenType.admin)
 
     result = subprocess.run(
-        ["lbadm", "--reserve", "-l", args.name + "_raw", "-d", args.duration, "-4", "--export"],
+        ["lbadm", "--reserve", "-l", args.name + "_raw", "-u", admin_token, "-d", args.duration, "-4", "--export"],
         capture_output=True, text=True, check=True
     )
 
@@ -36,7 +36,7 @@ def run(args):
 
 
     result = subprocess.run(
-        ["lbadm", "--reserve", "-l", args.name + "_processed", "-d", args.duration, "-4", "--export"],
+        ["lbadm", "--reserve", "-l", args.name + "_processed", "-u", admin_token, "-d", args.duration, "-4", "--export"],
         capture_output=True, text=True, check=True
     )
 
