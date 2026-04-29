@@ -1,6 +1,6 @@
 
 import argparse
-from amsc import reserver,source,worker,sink,launcher
+from amsc import reserver,source,worker,sink,launcher,server
 
 
 def main(argv=None):
@@ -12,6 +12,11 @@ def main(argv=None):
     launch_parser = subparsers.add_parser("launcher", help="Launch entire workflow on a SLURM cluster")
     launcher.add_arguments(launch_parser)
     launch_parser.set_defaults(func=launcher.run)
+
+    # server
+    server_parser = subparsers.add_parser("server", help="REST API for managing workflows on a SLURM cluster")
+    server.add_arguments(server_parser)
+    server_parser.set_defaults(func=server.run)
 
     # reserve
     res_parser = subparsers.add_parser("reserve", help="Reserve an EJFAT load balancer instance")
