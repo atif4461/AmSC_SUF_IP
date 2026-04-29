@@ -1,12 +1,17 @@
 
 import argparse
-from amsc import reserver,source,worker,sink
+from amsc import reserver,source,worker,sink,launcher
 
 
 def main(argv=None):
 
     parser = argparse.ArgumentParser(prog="amsc", description="A unified interface for Nathan's AmSC adventures")
     subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # launch
+    launch_parser = subparsers.add_parser("launcher", help="Launch entire workflow on a SLURM cluster")
+    launcher.add_arguments(launch_parser)
+    launch_parser.set_defaults(func=launcher.run)
 
     # reserve
     res_parser = subparsers.add_parser("reserve", help="Reserve an EJFAT load balancer instance")

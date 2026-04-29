@@ -7,7 +7,7 @@ import socket
 import os
 
 
-default_credential_dir = "/testbed/home/nbrei/amsc_demo"
+default_credential_dir = "/cred"
 
 sink_filename = "zmq_uri_sink.txt"
 raw_filename = "ejfat_uri_raw.txt"
