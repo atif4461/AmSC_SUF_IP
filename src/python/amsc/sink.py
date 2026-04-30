@@ -7,7 +7,7 @@ import socket
 import numpy
 import e2sar_py
 
-from amsc import message,credentials
+from amsc import message,credentials,ejfat
 
 min_entry_observed = -1
 max_entry_observed = -1
@@ -57,10 +57,9 @@ def process_data(data: bytes, verbose) -> bytes:
 def run(args):
 
     print("Running sink:")
-    print("  credential_dir: ", args.credential_dir)
-    print("  verbose:        ", args.verbose)
-
-
+    print("    credential_dir: ", args.credential_dir)
+    print("    verbose:        ", args.verbose)
+    print()
 
     # Fire up ZMQ
     context = zmq.Context.instance()
@@ -69,14 +68,14 @@ def run(args):
 
     # We want to bind the socket _before_ we notify the workers
     zmq_uri_sink = credentials.put_zmq_address(args.credential_dir)
-    print()
-    print("  zmq_uri_sink:  ", zmq_uri_sink)
+    print("Bound ZMQ socket: ", zmq_uri_sink)
 
     # Fire up EJFAT
     ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
-    print("  ejfat_uri_processed:  ", ejfat_uri_processed)
     ejfat_sender = ejfat.EjfatSender(ejfat_uri_processed)
     ejfat_sender.connect()
+    print("Connected to EJFAT: ", ejfat_uri_processed)
+    print()
 
     running = True
 

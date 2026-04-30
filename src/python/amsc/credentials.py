@@ -1,6 +1,5 @@
 
 
-import e2sar_py
 import pathlib
 import time
 import socket
@@ -46,11 +45,12 @@ def put_zmq_address(credential_dir):
     print(f"Successfully wrote ZMQ URI:")
     print("    contents    = ", zmq_uri)
     print("    destination = ", final_filepath)
+    print()
 
     return zmq_uri
 
 
-def get_ejfat_uri(credential_dir, filename, token_type):
+def get_ejfat_uri(credential_dir, filename):
 
     filepath = pathlib.Path(credential_dir) / filename
 
@@ -62,15 +62,14 @@ def get_ejfat_uri(credential_dir, filename, token_type):
         line = f.readlines()[0]
         line = line.removeprefix("export EJFAT_URI='")
         line = line.removesuffix("'\n")
-        ejfat_uri = e2sar_py.EjfatURI.get_from_file(line, token_type, False)
-        return ejfat_uri
+        return line
 
 
 def get_ejfat_uri_raw(credential_dir):
-    return get_ejfat_uri(credential_dir, raw_filename, e2sar_py.EjfatURI.TokenType.instance)
+    return get_ejfat_uri(credential_dir, raw_filename)
 
 def get_ejfat_uri_processed(credential_dir):
-    return get_ejfat_uri(credential_dir, processed_filename, e2sar_py.EjfatURI.TokenType.instance)
+    return get_ejfat_uri(credential_dir, processed_filename)
 
 
 def put_ejfat_uri(credential_dir, filename, ejfat_uri):
@@ -90,6 +89,7 @@ def put_ejfat_uri(credential_dir, filename, ejfat_uri):
     print(f"Successfully wrote EJFAT URI:")
     print("    contents    = ", ejfat_uri)
     print("    destination = ", filepath)
+    print()
 
 
 def put_ejfat_uri_raw(credential_dir, ejfat_uri):
