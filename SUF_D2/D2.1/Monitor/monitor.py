@@ -57,6 +57,9 @@ def make_trackfit_view(events: DataBundle) -> pd.DataFrame:
 
 
 def z0_best_all_ptypes(events: DataBundle) -> np.ndarray:
+    if "z0_best" in events and "z0" in events["z0_best"].columns:
+        return pd.to_numeric(events["z0_best"]["z0"], errors="coerce").dropna().to_numpy(dtype=float)
+
     view = make_trackfit_view(events)
     if view.empty or "z0" not in view.columns:
         return np.array([], dtype=float)
@@ -73,6 +76,12 @@ def z0_best_all_ptypes(events: DataBundle) -> np.ndarray:
 
 
 def fcal_energy(events: DataBundle) -> np.ndarray:
+    if "fcal_energy" in events:
+        df = events["fcal_energy"]
+        col = "E" if "E" in df.columns else next((c for c in ["energy", "e"] if c in df.columns), None)
+        if col is not None:
+            return pd.to_numeric(df[col], errors="coerce").dropna().to_numpy(dtype=float)
+
     if "fcalShower" not in events:
         return np.array([], dtype=float)
     df = events["fcalShower"]
@@ -89,6 +98,11 @@ def fcal_energy(events: DataBundle) -> np.ndarray:
 
 
 def fcal_xy_points(events: DataBundle) -> np.ndarray:
+    if "fcal_xy" in events and {"x", "y"}.issubset(events["fcal_xy"].columns):
+        pts = events["fcal_xy"][["x", "y"]].apply(pd.to_numeric, errors="coerce").dropna()
+        if not pts.empty:
+            return pts[["x", "y"]].to_numpy(dtype=float)
+
     if "fcalShower" not in events:
         return np.empty((0, 2), dtype=float)
     df = events["fcalShower"]
@@ -107,6 +121,11 @@ def fcal_xy_points(events: DataBundle) -> np.ndarray:
 
 def charged_track_x0y0_points(events: DataBundle) -> np.ndarray:
     """One x0,y0 point per charged track (best fit per chargedTrack when needed)."""
+    if "track_x0y0" in events and {"x0", "y0"}.issubset(events["track_x0y0"].columns):
+        pts = events["track_x0y0"][["x0", "y0"]].apply(pd.to_numeric, errors="coerce").dropna()
+        if not pts.empty:
+            return pts.to_numpy(dtype=float)
+
     if "chargedTrack" in events and {"x0", "y0"}.issubset(events["chargedTrack"].columns):
         cdf = events["chargedTrack"]
         pts = pd.DataFrame(
@@ -146,6 +165,12 @@ def charged_track_x0y0_points(events: DataBundle) -> np.ndarray:
 
 def pipi_invariant_masses(events: DataBundle) -> np.ndarray:
     """All pi+ pi- invariant masses per event using any available pi hypotheses."""
+    if "pipi_mass" in events:
+        df = events["pipi_mass"]
+        col = "m_pipi" if "m_pipi" in df.columns else next((c for c in ["mass", "m"] if c in df.columns), None)
+        if col is not None:
+            return pd.to_numeric(df[col], errors="coerce").dropna().to_numpy(dtype=float)
+
     view = make_trackfit_view(events)
     needed = {"reconstructedPhysicsEvent", "candidateId", "ptype", "px", "py", "pz"}
     if view.empty or not needed.issubset(set(view.columns)):
