@@ -1,0 +1,22 @@
+
+[project]
+name = "amsc"
+version = "0.1.0"
+description = "NP demonstrator for AmSC-SUF"
+readme = "readme.md"
+requires-python = ">=3.9"
+dependencies = ["pyzmq", "pytest", "pandas", "pyarrow", "flask"]
+
+[project.scripts]
+amsc = "amsc.cli:main"
+
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"
+cmake.source-dir = "."
+wheel.packages = ["src/python/amsc"]
+
+
