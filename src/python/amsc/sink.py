@@ -94,9 +94,11 @@ def run(args):
     while running:
         print("Polling for incoming events...")
         events = dict(poller.poll(timeout=1000))  # 1s timeout
+        print("Poll finished")
 
         if socket in events:
             try:
+                print("Found socket in events")
                 msg = socket.recv(flags=zmq.NOBLOCK)
                 result = process_data(msg, args.verbose) # Returns bytes
                 ejfat_sender.send(result)

@@ -10,16 +10,17 @@ class EjfatSender:
         self._ejfat_uri = result.value()
 
     def connect(self):
-        print("... Connecting EJFAT sender...")
+        print("Connecting EJFAT sender...")
         VALIDATE = False
         USE_IPV6 = False
-        USE_HOST_ADDRESS = True
+        USE_HOST_ADDRESS = False
 
         self._manager = e2sar_py.ControlPlane.LBManager(self._ejfat_uri, VALIDATE, USE_HOST_ADDRESS)
         result = self._manager.add_sender_self(USE_IPV6)
 
         if result.has_error():
             print("Error registering as sender: ", result.error().message)
+            print("Hint: Are you running this on the testbed login node? There's no network path")
             exit(1)
 
         data_id = 0
@@ -86,9 +87,9 @@ class EjfatReceiver:
             self._flags
         )
 
-        print("    data_ip=", reassembler.get_dataIP())
-        print("    port_range=", reassembler.get_portRange())
-        print("    recv_ports=", reassembler.get_recvPorts())
+        print("    data_ip=", self._reassembler.get_dataIP())
+        print("    port_range=", self._reassembler.get_portRange())
+        print("    recv_ports=", self._reassembler.get_recvPorts())
 
         # Register worker
         print(f"Registering receiver '{self._name}'...")

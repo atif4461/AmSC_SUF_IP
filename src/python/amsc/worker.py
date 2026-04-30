@@ -18,7 +18,6 @@ def add_arguments(parser):
 
 
 def process_data(serialized_data: bytes, verbose: bool) -> bytes:
-    print(f"Received {len(serialized_data)} bytes")
     msg = message.Message.from_arrow(serialized_data)
     if verbose:
         msg.print_all()
@@ -38,17 +37,18 @@ def run(args):
     print("  credential_dir: ", args.credential_dir)
     print("  input_port:     ", args.input_port)
     print("  verbose:        ", args.verbose)
-
-    USE_IPV6 = False
+    print()
 
     ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
-    zmq_uri = get_zmq_address(args.credential_dir)
+    zmq_uri = credentials.get_zmq_address(args.credential_dir)
 
-    print("   ejfat_uri_raw: ", ejfat_uri_raw)
-    print("   zmq_uri_sink:  ", zmq_uri)
+    print("Obtained credentials:")
+    print("  ejfat_uri_raw:  ", ejfat_uri_raw)
+    print("  zmq_uri_sink:   ", zmq_uri)
     print()
 
     # Connect to the zmq socket
+    context = zmq.Context.instance()
     push_sock = context.socket(zmq.PUSH)
     push_sock.connect(zmq_uri)
 
@@ -77,12 +77,14 @@ def run(args):
         if evt_length >= 0:
             print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
             result = process_data(evt_bytes, args.verbose)
+            print(f"Sending in response: {result}")
             push_sock.send(result)
 
     print("Closing ZMQ socket...")
     push_sock.close()
     context.term()
 
+    print("Closing EJFAT connection...")
     receiver.disconnect()
 
 

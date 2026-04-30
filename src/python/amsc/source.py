@@ -18,6 +18,7 @@ def add_arguments(parser):
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
+    parser.add_argument("--input-port", type=int, default=10000, help="Port for EJFAT to stream data back to")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -35,16 +36,18 @@ def run(args):
 
 
     ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
-    print("  ejfat_uri_raw:  ", ejfat_uri_raw)
-
     ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
+    print("Acquired credentials:")
+    print("  ejfat_uri_raw:        ", ejfat_uri_raw)
+
     print("  ejfat_uri_processed:  ", ejfat_uri_processed)
+    print()
 
-    ejfat_sender = EjfatSender(ejfat_uri_raw)
-    sender.connect()
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw)
+    ejfat_sender.connect()
 
-    ejfat_receiver = EjfatReceiver(ejfat_uri_processed)
-    receiver.connect()
+    ejfat_receiver = ejfat.EjfatReceiver("source", ejfat_uri_processed, args.input_port)
+    ejfat_receiver.connect()
 
     # Fire up the HDDM reader
     reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
@@ -77,7 +80,7 @@ def run(args):
         ejfat_sender.send(data, event_nr)
 
         # Quickly check if we've received something
-        evt_length, evt_bytes, evt_nr, data_id = ejfat_receiver.recv(0)
+        evt_length, evt_bytes, evt_nr, data_id = ejfat_receiver.recv(1)
         if evt_length >= 0:
             print(f"Received response: {evt_bytes}")
 

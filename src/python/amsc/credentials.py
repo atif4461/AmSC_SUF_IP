@@ -31,8 +31,8 @@ def put_zmq_address(credential_dir):
     temp_filepath = pathlib.Path(credential_dir) / (sink_filename + ".tmp")
     final_filepath = pathlib.Path(credential_dir) / sink_filename
 
-    if final_filepath.exists():
-        raise Exception(f"ZMQ URI already present in credential directory: {final_filepath}")
+    #if final_filepath.exists():
+    #    raise Exception(f"ZMQ URI already present in credential directory: {final_filepath}")
 
     zmq_uri = "tcp://" + socket.gethostname() + ":5555"
 
