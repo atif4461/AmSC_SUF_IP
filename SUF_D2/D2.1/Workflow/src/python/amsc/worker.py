@@ -16,6 +16,7 @@ def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--input-port", type=int, default=STARTING_PORT, help="Port for EJFAT to stream to")
+    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N processed messages")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -161,6 +162,7 @@ def run(args):
     print("  name:           ", args.name)
     print("  credential_dir: ", args.credential_dir)
     print("  input_port:     ", args.input_port)
+    print("  stats_every:    ", args.stats_every)
     print("  verbose:        ", args.verbose)
     print()
 
@@ -191,19 +193,37 @@ def run(args):
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
-    while running:
+    processed_count = 0
+    dropped_count = 0
+    t0 = time.monotonic()
+    stats_every = max(1, int(args.stats_every))
 
-        print("Waiting for incoming events...")
+    while running:
+        if args.verbose:
+            print("Waiting for incoming events...")
 
         # Receive message
         wait_ms = 3000
         evt_length, evt_bytes, evt_nr, data_id = receiver.recv(wait_ms)
 
         if evt_length >= 0:
-            print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
-            result = process_data(evt_bytes, args.verbose)
-            print(f"Sending in response: {result}")
-            push_sock.send(result)
+            try:
+                if args.verbose:
+                    print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
+                result = process_data(evt_bytes, args.verbose)
+                push_sock.send(result)
+                processed_count += 1
+
+                if processed_count % stats_every == 0:
+                    dt = max(1e-9, time.monotonic() - t0)
+                    rate = processed_count / dt
+                    print(
+                        f"worker[{args.name}] processed={processed_count} "
+                        f"dropped={dropped_count} rate={rate:.1f} msg/s"
+                    )
+            except Exception as exc:
+                dropped_count += 1
+                print(f"Warning: worker[{args.name}] failed to process event {evt_nr}: {exc}")
 
     print("Closing ZMQ socket...")
     push_sock.close()

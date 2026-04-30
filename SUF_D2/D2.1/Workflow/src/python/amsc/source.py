@@ -5,9 +5,10 @@ import signal
 import sys
 import pandas
 import os
+import pickle
+import zmq
 
-import e2sar_py
-from amsc import hddm_reader,credentials,ejfat
+from amsc import hddm_reader,credentials,ejfat,message
 
 
 def add_arguments(parser):
@@ -19,6 +20,8 @@ def add_arguments(parser):
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=10000, help="Port for EJFAT to stream data back to")
+    parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
+    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N sent raw messages")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -31,6 +34,8 @@ def run(args):
     print("  batch_size:     ", args.batch_size)
     print("  loop:           ", args.loop)
     print("  include_tables: ", args.include_tables)
+    print("  monitor_zmq_uri:", args.monitor_zmq_uri)
+    print("  stats_every:    ", args.stats_every)
     print("  verbose:        ", args.verbose)
     print()
 
@@ -49,6 +54,12 @@ def run(args):
     ejfat_receiver = ejfat.EjfatReceiver("source", ejfat_uri_processed, args.input_port)
     ejfat_receiver.connect()
 
+    # ZMQ link to monitoring process
+    zmq_ctx = zmq.Context.instance()
+    monitor_sock = zmq_ctx.socket(zmq.PUSH)
+    monitor_sock.connect(args.monitor_zmq_uri)
+    print("Connected monitor ZMQ PUSH:", args.monitor_zmq_uri)
+
     # Fire up the HDDM reader
     reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
 
@@ -63,6 +74,13 @@ def run(args):
     signal.signal(signal.SIGTERM, shutdown)
 
     event_nr = 0
+    sent_raw_count = 0
+    recv_processed_count = 0
+    forwarded_count = 0
+    decode_failures = 0
+    monitor_send_failures = 0
+    t0 = time.monotonic()
+    stats_every = max(1, int(args.stats_every))
     while running:
 
         msg = reader.read_batch()
@@ -70,7 +88,7 @@ def run(args):
             break
         if args.verbose:
             msg.print_selected(args.include_tables)
-        else:
+        elif event_nr % stats_every == 0:
             msg.print_short()
 
         # Convert message to bytes
@@ -78,11 +96,50 @@ def run(args):
 
         # Send message
         ejfat_sender.send(data, event_nr)
+        sent_raw_count += 1
 
         # Quickly check if we've received something
         evt_length, evt_bytes, evt_nr, data_id = ejfat_receiver.recv(1)
         if evt_length >= 0:
-            print(f"Received response: {evt_bytes}")
+            recv_processed_count += 1
+            if args.verbose:
+                print(f"Received processed payload: evt_nr={evt_nr} src={data_id} bytes={evt_length}")
+
+            # Deserialize Arrow bytes once here, then send compact DataFrame dict to monitor.
+            try:
+                processed_msg = message.Message.from_arrow(evt_bytes)
+                processed_tables = {
+                    table_name: processed_msg[table_name]
+                    for table_name in processed_msg.keys()
+                }
+            except Exception as exc:
+                decode_failures += 1
+                print(f"Warning: failed to decode processed payload ({decode_failures} errors): {exc}")
+                processed_tables = None
+
+            if processed_tables is not None:
+                try:
+                    payload = pickle.dumps(processed_tables, protocol=pickle.HIGHEST_PROTOCOL)
+                    monitor_sock.send(payload)
+                    forwarded_count += 1
+                    if args.verbose and forwarded_count % stats_every == 0:
+                        print(f"Forwarded {forwarded_count} processed messages to monitor")
+                except Exception as exc:
+                    monitor_send_failures += 1
+                    print(f"Warning: failed to send to monitor ({monitor_send_failures} errors): {exc}")
+
+        if sent_raw_count % stats_every == 0:
+            dt = max(1e-9, time.monotonic() - t0)
+            raw_rate = sent_raw_count / dt
+            proc_rate = recv_processed_count / dt
+            mon_rate = forwarded_count / dt
+            print(
+                "source "
+                f"raw_sent={sent_raw_count} ({raw_rate:.1f}/s) "
+                f"processed_recv={recv_processed_count} ({proc_rate:.1f}/s) "
+                f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
+                f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
+            )
 
         time.sleep(args.interval) # seconds
         event_nr += 1
@@ -90,6 +147,8 @@ def run(args):
 
     ejfat_sender.disconnect()
     ejfat_receiver.disconnect()
+    monitor_sock.close()
+    zmq_ctx.term()
 
 
 

@@ -4,60 +4,29 @@ import zmq
 import signal
 import sys
 import socket
-import numpy
-import e2sar_py
+import time
 
-from amsc import message,credentials,ejfat
-
-min_entry_observed = -1
-max_entry_observed = -1
-missing_events = set()
+from amsc import credentials,ejfat
 
 def add_arguments(parser):
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
+    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N forwarded messages")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
 def process_data(data: bytes, verbose) -> bytes:
-    global max_entry_observed
-    global min_entry_observed
-    global missing_events
-
-    print(f"Received {len(data)} bytes")
-    msg = message.Message.from_arrow(data)
+    # Keep data in Arrow/bytes form for efficiency.
+    # Worker already produced reduced tables needed downstream.
     if verbose:
-        msg.print_all()
-    else:
-        msg.print_short()
-
-    # Extract entry numbers from batch
-    df = msg["reconstructedPhysicsEvent"]
-
-    new_min_entry = df["entry"].min()
-    new_max_entry = df["entry"].max()
-
-    for entry_nr in range(max_entry_observed+1, new_min_entry):
-        missing_events.add(entry_nr)
-
-    for entry_nr in df["entry"]:
-        if entry_nr in missing_events:
-            missing_events.remove(entry_nr)
-
-    if new_max_entry > max_entry_observed:
-        max_entry_observed = new_max_entry
-
-    all_missing_events = numpy.fromiter(sorted(missing_events), int)
-    print("Missing events: ")
-    print(sorted(missing_events))
-    if (max_entry_observed > 0):
-        print(f"{len(missing_events)}/{max_entry_observed} ({len(missing_events)/max_entry_observed*100:.2f}%) lost")
-    return all_missing_events.tobytes()
+        print(f"Forwarding {len(data)} bytes to processed EJFAT stream")
+    return data
 
 
 def run(args):
 
     print("Running sink:")
     print("    credential_dir: ", args.credential_dir)
+    print("    stats_every:    ", args.stats_every)
     print("    verbose:        ", args.verbose)
     print()
 
@@ -90,22 +59,41 @@ def run(args):
     poller = zmq.Poller()
     poller.register(socket, zmq.POLLIN)
 
+    forwarded_count = 0
+    dropped_count = 0
+    t0 = time.monotonic()
+    stats_every = max(1, int(args.stats_every))
+
 
     while running:
-        print("Polling for incoming events...")
+        if args.verbose:
+            print("Polling for incoming events...")
         events = dict(poller.poll(timeout=1000))  # 1s timeout
-        print("Poll finished")
+        if args.verbose:
+            print("Poll finished")
 
         if socket in events:
             try:
-                print("Found socket in events")
+                if args.verbose:
+                    print("Found socket in events")
                 msg = socket.recv(flags=zmq.NOBLOCK)
                 result = process_data(msg, args.verbose) # Returns bytes
                 ejfat_sender.send(result)
+                forwarded_count += 1
+                if forwarded_count % stats_every == 0:
+                    dt = max(1e-9, time.monotonic() - t0)
+                    rate = forwarded_count / dt
+                    print(
+                        f"sink forwarded={forwarded_count} dropped={dropped_count} "
+                        f"rate={rate:.1f} msg/s"
+                    )
 
             except zmq.Again:
                 # No message available (race with poll)
                 continue
+            except Exception as exc:
+                dropped_count += 1
+                print(f"Warning: failed to forward message ({dropped_count} drops): {exc}")
 
     socket.close()
     context.term()
