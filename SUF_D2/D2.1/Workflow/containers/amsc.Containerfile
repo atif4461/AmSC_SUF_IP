@@ -62,7 +62,8 @@ RUN rm -rf /home
 # Install missing tools
 RUN apt-get update && apt-get -y install \
   git cmake clang libbz2-dev libz-dev libxerces-c-dev libhdf5-dev \
-  python3 python-is-python3 python3-pip python3-zmq python3-pandas
+  python3 python-is-python3 python3-pip python3-zmq python3-pandas \
+  neovim fzf tmux curl
 
 
 RUN cd / \
@@ -76,10 +77,13 @@ RUN cd / \
 RUN apt-get install -y python3-venv
 RUN python -m venv /venv --system-site-packages
 ENV PATH="/venv/bin:$PATH"
+ENV PS1="(venv) $PS1"
 
-COPY . .
+RUN git clone https://code.jlab.org/davidl/AmSC-SUF-IP.git /AmSC-SUF-IP \
+ && pip install -e /AmSC-SUF-IP/SUF_D2/D2.1/Workflow \
+ && pip install -r /AmSC-SUF-IP/SUF_D2/requirements.txt
 
-RUN cd /amsc_expedition/src/cpp/hddm_r \
+RUN cd /AmSC-SUF-IP/SUF_D2/D2.1/Workflow/src/cpp/hddm_r \
  && export HDDM_DIR=/usr/local \
  && hddm-cpp hddm_r.xml \
  && hddm-py hddm_r.xml \
@@ -88,7 +92,4 @@ RUN cd /amsc_expedition/src/cpp/hddm_r \
 
 RUN ln -s /e2sar-install/lib/python3/dist-packages/e2sar_py.cpython-312-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/
 
-RUN cd /amsc_expedition \
- && pip install -e .
 
-ENTRYPOINT ["amsc"]
