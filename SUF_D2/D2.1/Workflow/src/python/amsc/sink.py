@@ -67,10 +67,8 @@ def run(args):
 
     while running:
         if args.verbose:
-            print("Polling for incoming events...")
+            print("Sink: Waiting for incoming events...")
         events = dict(poller.poll(timeout=1000))  # 1s timeout
-        if args.verbose:
-            print("Poll finished")
 
         if socket in events:
             try:

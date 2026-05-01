@@ -10,12 +10,10 @@ import pandas as pd
 from amsc import message,credentials,ejfat
 
 
-STARTING_PORT = 10000
-
 def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--input-port", type=int, default=STARTING_PORT, help="Port for EJFAT to stream to")
+    parser.add_argument("--input-port", type=int, default=12544, help="Port for EJFAT to stream to")
     parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N processed messages")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
@@ -200,7 +198,7 @@ def run(args):
 
     while running:
         if args.verbose:
-            print("Waiting for incoming events...")
+            print("Worker: Waiting for incoming events...")
 
         # Receive message
         wait_ms = 3000

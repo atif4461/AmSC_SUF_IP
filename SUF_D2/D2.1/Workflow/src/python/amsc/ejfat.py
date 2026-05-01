@@ -48,12 +48,7 @@ class EjfatSender:
 
     def send(self, data:bytes, event_nr=None):
 
-        #res = segmenter.addToSendQueue(data, len(data), _eventNum=event_nr)
-        if event_nr is not None:
-            res = self._segmenter.sendEvent(data, len(data))
-        else:
-            res = self._segmenter.sendEvent(data, len(data), _eventNum=event_nr)
-
+        res = self._segmenter.sendEvent(data, len(data))
         if res.has_error():
             print("Error:", res.error())
 

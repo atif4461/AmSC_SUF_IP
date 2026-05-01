@@ -4,7 +4,6 @@ import os
 import argparse
 import sys
 import pathlib
-import e2sar_py
 from amsc import credentials
 
 def add_arguments(parser):
@@ -25,20 +24,20 @@ def run(args):
 
 def reserve_ejfat(credential_dir, name, duration):
 
-    admin_token = get_ejfat_uri(credential_dir, "ejfat_uri_admin.txt", e2sar_py.EjfatURI.TokenType.admin)
+    admin_token = credentials.get_ejfat_uri(credential_dir, "ejfat_uri_admin.txt")
 
     result = subprocess.run(
-        ["lbadm", "--reserve", "-l", args.name + "_raw", "-u", admin_token, "-d", args.duration, "-4", "--export"],
+        ["lbadm", "--reserve", "-l", name + "_raw", "-u", admin_token, "-d", duration, "-4", "--export"],
         capture_output=True, text=True, check=True
     )
 
-    credentials.put_ejfat_uri_raw(args.credential_dir, result.stdout)
+    credentials.put_ejfat_uri_raw(credential_dir, result.stdout)
 
 
     result = subprocess.run(
-        ["lbadm", "--reserve", "-l", args.name + "_processed", "-u", admin_token, "-d", args.duration, "-4", "--export"],
+        ["lbadm", "--reserve", "-l", name + "_processed", "-u", admin_token, "-d", duration, "-4", "--export"],
         capture_output=True, text=True, check=True
     )
 
-    credentials.put_ejfat_uri_processed(args.credential_dir, result.stdout)
+    credentials.put_ejfat_uri_processed(credential_dir, result.stdout)
 

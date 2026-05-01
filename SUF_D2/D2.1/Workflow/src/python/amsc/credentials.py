@@ -60,8 +60,9 @@ def get_ejfat_uri(credential_dir, filename):
 
     with open(filepath, 'r') as f:
         line = f.readlines()[0]
+        line = line.strip()
         line = line.removeprefix("export EJFAT_URI='")
-        line = line.removesuffix("'\n")
+        line = line.removesuffix("'")
         return line
 
 
@@ -88,7 +89,7 @@ def put_ejfat_uri(credential_dir, filename, ejfat_uri):
 
     print(f"Successfully wrote EJFAT URI:")
     print("    contents    = ", ejfat_uri)
-    print("    destination = ", filepath)
+    print("    destination = ", final_filepath)
     print()
 
 
