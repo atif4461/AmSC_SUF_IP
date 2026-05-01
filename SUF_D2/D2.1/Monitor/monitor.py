@@ -403,7 +403,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
   <meta charset=\"utf-8\" />
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
   <title>Physics Streaming Dashboard</title>
-  <script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>
+    <script src=\"https://cdn.plot.ly/plotly-cartesian-2.35.2.min.js\"></script>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; background: #111827; color: #f3f4f6; }
     .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
@@ -418,12 +418,10 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
         .col { display: flex; flex-direction: column; min-width: 0; }
         .mini-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
         .mini-row .plot { min-width: 0; }
-        .square-plot { aspect-ratio: 1 / 1; }
     .status { opacity: 0.85; font-size: 0.95rem; }
         @media (max-width: 900px) {
             .row { grid-template-columns: 1fr; }
             .mini-row { grid-template-columns: 1fr; }
-            .square-plot { aspect-ratio: auto; }
         }
   </style>
 </head>
@@ -456,8 +454,8 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
             <div class=\"col\">
                 <div class=\"plot\"><div id=\"plotFcal\"></div></div>
                 <div class=\"mini-row\">
-                    <div class=\"plot square-plot\"><div id=\"plotFcalXY\"></div></div>
-                    <div class=\"plot square-plot\"><div id=\"plotTrackXY\"></div></div>
+                    <div class=\"plot\"><div id=\"plotFcalXY\"></div></div>
+                    <div class=\"plot\"><div id=\"plotTrackXY\"></div></div>
                 </div>
             </div>
         </div>
@@ -515,8 +513,8 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
     initHistPlot('plotZ0', 'z0 (best chisq/Ndof per candidate)', 'z0', '#dc2626', 220);
     initHistPlot('plotFcal', 'fcalShower energy', 'E', '#2563eb', 220);
     initHistPlot('plotPiPi', 'Invariant mass of all pi+ pi- pairs', 'M(π+π-) [GeV]', '#7c3aed', 320);
-    initHeatmapPlot('plotFcalXY', 'fcalShower x,y (2D histogram)', 'x', 'y');
-    initHeatmapPlot('plotTrackXY', 'charged tracks x0,y0 (2D histogram)', 'x0', 'y0');
+    initHeatmapPlot('plotFcalXY', 'fcalShower x,y', 'x', 'y');
+    initHeatmapPlot('plotTrackXY', 'charged tracks x0,y0', 'x0', 'y0');
 
   function updatePlot(divId, edges, counts) {
     const x = centers(edges);
@@ -538,7 +536,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
             showscale: true
         }], {
             title,
-            xaxis: { title: xTitle, scaleanchor: 'y', scaleratio: 1 },
+            xaxis: { title: xTitle },
             yaxis: { title: yTitle },
             height: 320,
             margin: { t: 40, r: 12, b: 50, l: 60 },
