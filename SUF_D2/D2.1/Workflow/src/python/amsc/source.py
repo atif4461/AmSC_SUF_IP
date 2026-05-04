@@ -15,14 +15,16 @@ def add_arguments(parser):
     parser.add_argument("input_filename", help="Input REST filename")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--name", default="source0", help="Name for this source")
-    parser.add_argument("--interval", type=float, default=1.0, help="Interval [s] between sends")
-    parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=12543, help="Port for EJFAT to stream data back to")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
     parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N sent raw messages")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
+    parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
+    parser.add_argument("--max-event-rate", type=float, default=1.0, help="Max (physics) event rate [Hz]")
+    parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Load all data before starting streaming, to achieve higher event rates")
+    parser.add_argument("--preload-count", type=int, default=-1, help="Number of messages to preload. -1 denotes all events")
 
 
 def run(args):
@@ -37,6 +39,9 @@ def run(args):
     print("  input_port:     ", args.input_port)
     print("  monitor_zmq_uri:", args.monitor_zmq_uri)
     print("  stats_every:    ", args.stats_every)
+    print("  max_event_rate: ", args.max_event_rate)
+    print("  preload:        ", args.preload)
+    print("  preload_count:  ", args.preload_count)
     print("  verbose:        ", args.verbose)
     print()
 
@@ -64,6 +69,17 @@ def run(args):
     # Fire up the HDDM reader
     reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
 
+    if args.preload:
+        print("Preloading all data...")
+        preloaded = []
+        msg_nr = 0
+        msg = reader.read_batch()
+        while msg and (args.preload_count == -1 or msg_nr < args.preload_count):
+            preloaded.append(msg)
+            msg_nr += 1
+            msg = reader.read_batch()
+        print("Successfully preloaded all data...")
+
     # Loop until killed
     running = True
     def shutdown(signum, frame):
@@ -84,9 +100,19 @@ def run(args):
     stats_every = max(1, int(args.stats_every))
     while running:
 
-        msg = reader.read_batch()
-        if not msg:
-            break
+        if args.preload:
+            if args.loop:
+                msg = preloaded[event_nr % len(preloaded)]
+            else:
+                if event_nr >= len(preloaded):
+                    break
+                msg=preloaded[event_nr]
+        else:
+            # Not preloaded
+            msg = reader.read_batch()
+            if not msg:
+                break
+
         if args.verbose:
             msg.print_selected(args.include_tables)
         elif event_nr % stats_every == 0:
@@ -142,7 +168,7 @@ def run(args):
                 f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
             )
 
-        time.sleep(args.interval) # seconds
+        time.sleep(args.batch_size/args.max_event_rate) # seconds
         event_nr += 1
 
 
