@@ -1,6 +1,5 @@
 
 FROM docker.io/ibaldin/e2sar:0.3.1
-WORKDIR /amsc_expedition
 
 # -------------
 # Toolbx fixes
@@ -66,6 +65,12 @@ RUN apt-get update && apt-get -y install \
   neovim fzf tmux curl
 
 
+# Install lazygit
+RUN curl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/download/v0.61.1/lazygit_0.61.1_linux_x86_64.tar.gz"
+ && tar xf lazygit.tar.gz lazygit \
+ && install lazygit -D -t /usr/local/bin/
+
+
 RUN cd / \
  && git clone https://github.com/JeffersonLab/HDDM \
  && mkdir HDDM/build \
@@ -92,5 +97,7 @@ RUN cd /AmSC-SUF-IP/SUF_D2/D2.1/Workflow/src/cpp/hddm_r \
  && cp hddm_r.cpython-312-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/
 
 RUN ln -s /e2sar-install/lib/python3/dist-packages/e2sar_py.cpython-312-x86_64-linux-gnu.so /usr/lib/python3/dist-packages/
+
+RUN echo "nbrei/amsc_expedition:v3" > /container.md
 
 
