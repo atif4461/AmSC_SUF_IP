@@ -73,11 +73,17 @@ def run(args):
         print("Preloading all data...")
         preloaded = []
         msg_nr = 0
-        msg = reader.read_batch()
-        while msg and (args.preload_count == -1 or msg_nr < args.preload_count):
-            preloaded.append(msg)
-            msg_nr += 1
+        while True:
             msg = reader.read_batch()
+            msg_nr += 1
+
+            if msg is None:
+                break
+
+            preloaded.append(msg)
+            if msg_nr >= args.preload_count:
+                break
+
         print("Successfully preloaded all data...")
 
     # Loop until killed

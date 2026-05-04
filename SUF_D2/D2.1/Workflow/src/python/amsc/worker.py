@@ -21,8 +21,6 @@ def add_arguments(parser):
 def process_data(serialized_data: bytes, verbose: bool) -> bytes:
     msg = message.Message.from_arrow(serialized_data)
     if verbose:
-        msg.print_all()
-    else:
         msg.print_short()
 
     def _df(name: str) -> pd.DataFrame:
