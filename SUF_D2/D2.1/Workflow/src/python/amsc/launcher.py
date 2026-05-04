@@ -4,11 +4,9 @@ import subprocess
 
 from amsc import credentials
 
-default_credential_dir="/testbed/home/nbrei/amsc_d2.1/"
-
 def add_arguments(parser):
     parser.add_argument("--image", default="codecr.jlab.org/nbrei/amsc_expedition:latest", help="Container image to use for submitted jobs")
-    parser.add_argument("--credential-dir", default=default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
+    parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--worker-count", type=int, default=2, help="Number of worker jobs to launch")
     parser.add_argument("--include-source", action=argparse.BooleanOptionalAction, default=False, help="Launch source job (mainly for debugging)")
 

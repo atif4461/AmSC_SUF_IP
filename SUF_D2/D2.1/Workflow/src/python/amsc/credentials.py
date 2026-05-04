@@ -6,7 +6,7 @@ import socket
 import os
 
 
-default_credential_dir = "/cred"
+default_credential_dir = "./credentials"
 
 sink_filename = "zmq_uri_sink.txt"
 raw_filename = "ejfat_uri_raw.txt"
