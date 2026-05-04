@@ -62,20 +62,13 @@ RUN rm -rf /home
 RUN apt-get update && apt-get -y install \
   git cmake clang libbz2-dev libz-dev libxerces-c-dev libhdf5-dev \
   python3 python-is-python3 python3-pip python3-zmq python3-pandas \
-  neovim tmux curl
+  neovim fzf tmux curl
 
 
 # Install lazygit
 RUN curl -Lo lazygit.tar.gz "https://github.com/jesseduffield/lazygit/releases/download/v0.61.1/lazygit_0.61.1_linux_x86_64.tar.gz"
  && tar xf lazygit.tar.gz lazygit \
- && install lazygit -D -t /usr/local/bin/ \
- && rm -rf lazygit.tar.gz lazygit
-
-# Install fuzzyfinder
-RUN curl -Lo fzf.tar.gz "https://github.com/junegunn/fzf/releases/download/v0.72.0/fzf-0.72.0-linux_amd64.tar.gz"
- && tar xf fzf.tar.gz fzf \
- && install fzf -D -t /usr/local/bin/
- && rm -rf fzf.tar.gz fzf
+ && install lazygit -D -t /usr/local/bin/
 
 
 RUN cd / \
