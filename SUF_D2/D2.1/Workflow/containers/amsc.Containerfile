@@ -81,7 +81,8 @@ ENV PS1="(venv) $PS1"
 
 RUN git clone https://code.jlab.org/davidl/AmSC-SUF-IP.git /AmSC-SUF-IP \
  && pip install -e /AmSC-SUF-IP/SUF_D2/D2.1/Workflow \
- && pip install -r /AmSC-SUF-IP/SUF_D2/requirements.txt
+ && pip install -r /AmSC-SUF-IP/SUF_D2/requirements.txt \
+ && pip install -r /AmSC-SUF-IP/SUF_D2/D2.1/Monitor/requirements.txt
 
 RUN cd /AmSC-SUF-IP/SUF_D2/D2.1/Workflow/src/cpp/hddm_r \
  && export HDDM_DIR=/usr/local \
