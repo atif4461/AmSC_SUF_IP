@@ -14,7 +14,7 @@ def add_arguments(parser):
     parser.add_argument("--name", default="worker0", help="Name for this worker")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--input-port", type=int, default=12544, help="Port for EJFAT to stream to")
-    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N processed messages")
+    parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -192,7 +192,6 @@ def run(args):
     processed_count = 0
     dropped_count = 0
     t0 = time.monotonic()
-    stats_every = max(1, int(args.stats_every))
 
     while running:
         if args.verbose:
@@ -210,16 +209,20 @@ def run(args):
                 push_sock.send(result)
                 processed_count += 1
 
-                if processed_count % stats_every == 0:
-                    dt = max(1e-9, time.monotonic() - t0)
-                    rate = processed_count / dt
-                    print(
-                        f"worker[{args.name}] processed={processed_count} "
-                        f"dropped={dropped_count} rate={rate:.1f} msg/s"
-                    )
             except Exception as exc:
                 dropped_count += 1
                 print(f"Warning: worker[{args.name}] failed to process event {evt_nr}: {exc}")
+
+        t1 = time.monotonic()
+        if (t1-t0) > args.stats_every:
+            rate = processed_count / (t1-t0)
+            print(
+                f"worker[{args.name}] processed={processed_count} dropped={dropped_count} "
+                f"rate={rate:.1f} msg/s"
+            )
+            t0 = t1
+            processed_count = 0
+            dropped_count = 0
 
     print("Closing ZMQ socket...")
     push_sock.close()

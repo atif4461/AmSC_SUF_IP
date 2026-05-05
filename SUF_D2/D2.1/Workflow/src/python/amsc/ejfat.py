@@ -29,6 +29,7 @@ class EjfatSender:
         flags = e2sar_py.DataPlane.Segmenter.SegmenterFlags()
         flags.useCP = True
         flags.dpV6 = USE_IPV6
+        flags.numSendSockets = 4
 
         self._segmenter = e2sar_py.DataPlane.Segmenter(
             self._ejfat_uri,
@@ -48,7 +49,8 @@ class EjfatSender:
 
     def send(self, data:bytes, event_nr=None):
 
-        res = self._segmenter.sendEvent(data, len(data))
+        #res = self._segmenter.sendEvent(data, len(data))
+        res = self._segmenter.addToSendQueue(data, len(data))
         if res.has_error():
             print("Error:", res.error())
 

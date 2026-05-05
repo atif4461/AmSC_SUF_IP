@@ -10,7 +10,7 @@ from amsc import credentials,ejfat
 
 def add_arguments(parser):
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N forwarded messages")
+    parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 
@@ -62,13 +62,11 @@ def run(args):
     forwarded_count = 0
     dropped_count = 0
     t0 = time.monotonic()
-    stats_every = max(1, int(args.stats_every))
-
 
     while running:
         if args.verbose:
             print("Sink: Waiting for incoming events...")
-        events = dict(poller.poll(timeout=1000))  # 1s timeout
+        events = dict(poller.poll(timeout=100))  # .1s timeout
 
         if socket in events:
             try:
@@ -78,13 +76,6 @@ def run(args):
                 result = process_data(msg, args.verbose) # Returns bytes
                 ejfat_sender.send(result)
                 forwarded_count += 1
-                if forwarded_count % stats_every == 0:
-                    dt = max(1e-9, time.monotonic() - t0)
-                    rate = forwarded_count / dt
-                    print(
-                        f"sink forwarded={forwarded_count} dropped={dropped_count} "
-                        f"rate={rate:.1f} msg/s"
-                    )
 
             except zmq.Again:
                 # No message available (race with poll)
@@ -92,6 +83,17 @@ def run(args):
             except Exception as exc:
                 dropped_count += 1
                 print(f"Warning: failed to forward message ({dropped_count} drops): {exc}")
+
+        t1 = time.monotonic()
+        if (t1-t0) > args.stats_every:
+            rate = forwarded_count / (t1-t0)
+            print(
+                f"sink forwarded={forwarded_count} dropped={dropped_count} "
+                f"rate={rate:.1f} msg/s"
+            )
+            t0 = t1
+            forwarded_count = 0
+            dropped_count = 0
 
     socket.close()
     context.term()

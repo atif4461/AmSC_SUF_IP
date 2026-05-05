@@ -19,7 +19,7 @@ def add_arguments(parser):
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=12543, help="Port for EJFAT to stream data back to")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
-    parser.add_argument("--stats-every", type=int, default=100, help="Print one stats line every N sent raw messages")
+    parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--max-event-rate", type=float, default=1.0, help="Max (physics) event rate [Hz]")
@@ -102,9 +102,11 @@ def run(args):
     forwarded_count = 0
     decode_failures = 0
     monitor_send_failures = 0
-    t0 = time.monotonic()
     stats_every = max(1, int(args.stats_every))
+    t0 = time.monotonic()
+
     while running:
+        t1 = time.monotonic()
 
         if args.preload:
             if args.loop:
@@ -121,13 +123,15 @@ def run(args):
 
         if args.verbose:
             msg.print_selected(args.include_tables)
-        elif event_nr % stats_every == 0:
-            msg.print_short()
+        #elif event_nr % stats_every == 0:
+        #    msg.print_short()
 
         # Convert message to bytes
         data = msg.to_arrow()
 
         # Send message
+        if args.verbose:
+            print(f"Sending raw payload: evt_nr={evt_nr}")
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
 
@@ -161,8 +165,10 @@ def run(args):
                     monitor_send_failures += 1
                     print(f"Warning: failed to send to monitor ({monitor_send_failures} errors): {exc}")
 
-        if sent_raw_count % stats_every == 0:
-            dt = max(1e-9, time.monotonic() - t0)
+
+        t2 = time.monotonic()
+        dt = t2 - t0
+        if dt > args.stats_every:
             raw_rate = sent_raw_count / dt
             proc_rate = recv_processed_count / dt
             mon_rate = forwarded_count / dt
@@ -173,8 +179,13 @@ def run(args):
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
                 f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
             )
+            t0 = t2
+            sent_raw_count = 0
+            recv_processed_count = 0
+            forwarded_count = 0
 
-        time.sleep(args.batch_size/args.max_event_rate) # seconds
+        delay = max(args.batch_size/args.max_event_rate - (t2-t1), 0)
+        time.sleep(delay) # seconds
         event_nr += 1
 
 
