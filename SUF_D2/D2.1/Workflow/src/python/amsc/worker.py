@@ -11,9 +11,9 @@ from amsc import message,credentials,ejfat
 
 
 def add_arguments(parser):
-    parser.add_argument("--name", default="worker0", help="Name for this worker")
+    parser.add_argument("--id", type=int, default=0, help="ID for this worker")
+    parser.add_argument("--input-port", type=int, default=None, help="Port for EJFAT to stream data back to. If no port is specified, uses 19800+id")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--input-port", type=int, default=12544, help="Port for EJFAT to stream to")
     parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
@@ -154,8 +154,11 @@ def process_data(serialized_data: bytes, verbose: bool) -> bytes:
 
 def run(args):
 
+    if args.input_port is None:
+        args.input_port = 19800 + args.id
+
     print("Running worker:")
-    print("  name:           ", args.name)
+    print("  id:             ", args.id)
     print("  credential_dir: ", args.credential_dir)
     print("  input_port:     ", args.input_port)
     print("  stats_every:    ", args.stats_every)
@@ -176,7 +179,7 @@ def run(args):
     push_sock.connect(zmq_uri)
 
     # Connect to EJFAT
-    receiver = ejfat.EjfatReceiver(args.name, ejfat_uri_raw, args.input_port)
+    receiver = ejfat.EjfatReceiver("worker" + str(args.id), ejfat_uri_raw, args.input_port)
     receiver.connect()
 
     # Loop until killed
@@ -211,13 +214,13 @@ def run(args):
 
             except Exception as exc:
                 dropped_count += 1
-                print(f"Warning: worker[{args.name}] failed to process event {evt_nr}: {exc}")
+                print(f"Warning: Worker {args.id} failed to process event {evt_nr}: {exc}")
 
         t1 = time.monotonic()
         if (t1-t0) > args.stats_every:
             rate = processed_count / (t1-t0)
             print(
-                f"worker[{args.name}] processed={processed_count} dropped={dropped_count} "
+                f"worker {args.id} processed={processed_count} dropped={dropped_count} "
                 f"rate={rate:.1f} msg/s"
             )
             t0 = t1

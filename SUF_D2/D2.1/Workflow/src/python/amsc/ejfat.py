@@ -3,11 +3,12 @@ import e2sar_py
 
 
 class EjfatSender:
-    def __init__(self, ejfat_uri: str):
+    def __init__(self, ejfat_uri: str, event_source_id=0):
         result = e2sar_py.EjfatURI.get_from_string(ejfat_uri, e2sar_py.EjfatURI.TokenType.instance)
         if result.has_error():
             print("Bad EJFAT_URI: ", result.error())
         self._ejfat_uri = result.value()
+        self._event_source_id = 0
 
     def connect(self):
         print("Connecting EJFAT sender...")
@@ -23,8 +24,7 @@ class EjfatSender:
             print("Hint: Are you running this on the testbed login node? There's no network path")
             exit(1)
 
-        data_id = 0
-        event_source_id = 0
+        data_id = self._event_source_id
 
         flags = e2sar_py.DataPlane.Segmenter.SegmenterFlags()
         flags.useCP = True
@@ -34,7 +34,7 @@ class EjfatSender:
         self._segmenter = e2sar_py.DataPlane.Segmenter(
             self._ejfat_uri,
             data_id,
-            event_source_id,
+            self._event_source_id,
             flags
         )
 
@@ -48,7 +48,6 @@ class EjfatSender:
 
 
     def send(self, data:bytes, event_nr=None):
-
         #res = self._segmenter.sendEvent(data, len(data))
         res = self._segmenter.addToSendQueue(data, len(data))
         if res.has_error():

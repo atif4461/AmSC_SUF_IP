@@ -13,26 +13,29 @@ from amsc import hddm_reader,credentials,ejfat,message
 
 def add_arguments(parser):
     parser.add_argument("input_filename", help="Input REST filename")
+    parser.add_argument("--id", type=int, default=0, help="Event source ID")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--name", default="source0", help="Name for this source")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
-    parser.add_argument("--input-port", type=int, default=12543, help="Port for EJFAT to stream data back to")
+    parser.add_argument("--input-port", type=int, default=None, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
     parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
     parser.add_argument("--max-event-rate", type=float, default=1.0, help="Max (physics) event rate [Hz]")
-    parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Load all data before starting streaming, to achieve higher event rates")
-    parser.add_argument("--preload-count", type=int, default=-1, help="Number of messages to preload. -1 denotes all events")
+    parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Preload data before starting streaming, to achieve higher event rates")
+    parser.add_argument("--preload-count", type=int, default=-1, help="Number of batches to preload. -1 denotes all batches")
 
 
 def run(args):
 
+    if args.input_port is None:
+        args.input_port = 19900 + args.id
+
     print("Running EJFAT source:")
     print("  input_filename: ", args.input_filename)
+    print("  id:             ", args.id)
     print("  credential_dir: ", args.credential_dir)
-    print("  name:           ", args.name)
     print("  batch_size:     ", args.batch_size)
     print("  loop:           ", args.loop)
     print("  include_tables: ", args.include_tables)
@@ -54,10 +57,10 @@ def run(args):
     print("  ejfat_uri_processed:  ", ejfat_uri_processed)
     print()
 
-    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, args.id)
     ejfat_sender.connect()
 
-    ejfat_receiver = ejfat.EjfatReceiver("source", ejfat_uri_processed, args.input_port)
+    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.input_port)
     ejfat_receiver.connect()
 
     # ZMQ link to monitoring process
@@ -70,7 +73,7 @@ def run(args):
     reader = hddm_reader.HDDMReader(args.input_filename, args.batch_size, args.loop)
 
     if args.preload:
-        print("Preloading all data...")
+        print(f"Preloading {args.preload_count} batches...")
         preloaded = []
         msg_nr = 0
         while True:
@@ -84,7 +87,7 @@ def run(args):
             if msg_nr >= args.preload_count:
                 break
 
-        print("Successfully preloaded all data...")
+        print("... Finished preloading data")
 
     # Loop until killed
     running = True
@@ -131,7 +134,7 @@ def run(args):
 
         # Send message
         if args.verbose:
-            print(f"Sending raw payload: evt_nr={evt_nr}")
+            print(f"Sending raw data batch {event_nr} of size {len(data)}")
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
 
@@ -140,7 +143,7 @@ def run(args):
         if evt_length >= 0:
             recv_processed_count += 1
             if args.verbose:
-                print(f"Received processed payload: evt_nr={evt_nr} src={data_id} bytes={evt_length}")
+                print(f"Received processed batch: evt_nr={evt_nr} src={data_id} bytes={evt_length}")
 
             # Deserialize Arrow bytes once here, then send compact DataFrame dict to monitor.
             try:
