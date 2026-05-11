@@ -6,13 +6,14 @@ import time
 import argparse
 import numpy as np
 import pandas as pd
+import sys
+import multiprocessing as mp
 
 from amsc import message,credentials,ejfat
 
-
 def add_arguments(parser):
-    parser.add_argument("--id", type=int, default=0, help="ID for this worker")
-    parser.add_argument("--input-port", type=int, default=None, help="Port for EJFAT to stream data back to. If no port is specified, uses 19800+id")
+    parser.add_argument("--parallelism", type=int, default=1, help="Number of parallel processes to launch on this node")
+    parser.add_argument("--input-port", type=int, default=19800, help="First port for EJFAT to stream data back to.")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
@@ -152,64 +153,70 @@ def process_data(serialized_data: bytes, verbose: bool) -> bytes:
     return output_message.to_arrow()
 
 
-def run(args):
+ZMQ_URI_RATES = "tcp://127.0.0.1:5558"
+ZMQ_URI_CONTROL = "tcp://127.0.0.1:5559"   # PUB/SUB for broadcast shutdown
 
-    if args.input_port is None:
-        args.input_port = 19800 + args.id
+def run_worker(id, input_port, credential_dir, stats_every, verbose):
 
-    print("Running worker:")
-    print("  id:             ", args.id)
-    print("  credential_dir: ", args.credential_dir)
-    print("  input_port:     ", args.input_port)
-    print("  stats_every:    ", args.stats_every)
-    print("  verbose:        ", args.verbose)
-    print()
+    print(f"Launching worker {id} on port {input_port}")
 
-    ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
-    zmq_uri = credentials.get_zmq_address(args.credential_dir)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    ejfat_uri_raw = credentials.get_ejfat_uri_raw(credential_dir)
+    zmq_uri_sink = credentials.get_zmq_address(credential_dir)
 
     print("Obtained credentials:")
     print("  ejfat_uri_raw:  ", ejfat_uri_raw)
-    print("  zmq_uri_sink:   ", zmq_uri)
+    print("  zmq_uri_sink:   ", zmq_uri_sink)
     print()
 
-    # Connect to the zmq socket
+
+    # Connect to the supervisor
     context = zmq.Context.instance()
-    push_sock = context.socket(zmq.PUSH)
-    push_sock.connect(zmq_uri)
+    rates_socket = context.socket(zmq.PUSH)
+    rates_socket.setsockopt(zmq.LINGER, 0) # Discard any unsent messages on shutdown
+    rates_socket.connect(ZMQ_URI_RATES)        # supervisor binds, workers connect
+
+    ctrl_socket = context.socket(zmq.SUB)
+    ctrl_socket.connect(ZMQ_URI_CONTROL)
+    ctrl_socket.setsockopt_string(zmq.SUBSCRIBE, "")   # subscribe to all messages
+
+    poller = zmq.Poller()
+    poller.register(ctrl_socket, zmq.POLLIN)   # only need to poll control channel;
+
+
+    # Connect to the zmq sink
+    sink_socket = context.socket(zmq.PUSH)
+    sink_socket.setsockopt(zmq.LINGER, 0) # Discard any unsent messages on shutdown
+    sink_socket.connect(zmq_uri_sink)
 
     # Connect to EJFAT
-    receiver = ejfat.EjfatReceiver("worker" + str(args.id), ejfat_uri_raw, args.input_port)
+    receiver = ejfat.EjfatReceiver("worker" + str(id), ejfat_uri_raw, input_port)
     receiver.connect()
 
-    # Loop until killed
-    running = True
-    def shutdown(signum, frame):
-        nonlocal running
-        running = False
-        print("\nShutdown requested...")
-
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
-
+    # Loop until shutdown request
     processed_count = 0
     dropped_count = 0
     t0 = time.monotonic()
 
-    while running:
-        if args.verbose:
-            print("Worker: Waiting for incoming events...")
+    while True:
 
-        # Receive message
-        wait_ms = 3000
+        # Receive ZMQ shutdown message (nonblocking)
+        if poller.poll(0):              # 0ms timeout = pure non-blocking
+            msg = ctrl_socket.recv_string()
+            if msg == "stop":
+                break
+
+        # Receive EJFAT message
+        wait_ms = 100
         evt_length, evt_bytes, evt_nr, data_id = receiver.recv(wait_ms)
 
         if evt_length >= 0:
             try:
-                if args.verbose:
+                if verbose:
                     print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
-                result = process_data(evt_bytes, args.verbose)
-                push_sock.send(result)
+                result = process_data(evt_bytes, verbose)
+                sink_socket.send(result)
                 processed_count += 1
 
             except Exception as exc:
@@ -217,23 +224,68 @@ def run(args):
                 print(f"Warning: Worker {args.id} failed to process event {evt_nr}: {exc}")
 
         t1 = time.monotonic()
-        if (t1-t0) > args.stats_every:
+        if (t1-t0) > stats_every:
             rate = processed_count / (t1-t0)
-            print(
-                f"worker {args.id} processed={processed_count} dropped={dropped_count} "
-                f"rate={rate:.1f} msg/s"
-            )
+            rates_socket.send_pyobj({"id": id, "processed_count": processed_count, "dropped_count": dropped_count, "rate": rate})
             t0 = t1
             processed_count = 0
             dropped_count = 0
 
-    print("Closing ZMQ socket...")
-    push_sock.close()
+    print("Closing ZMQ sockets...")
+    sink_socket.close()
+    rates_socket.close()
+    ctrl_socket.close()
     context.term()
 
     print("Closing EJFAT connection...")
     receiver.disconnect()
 
+    print("Worker exited cleanly.")
 
-    print("Exited cleanly.")
+
+def run(args):
+    print("Running workers:")
+    print("  parallelism:    ", args.parallelism)
+    print("  input_port:     ", args.input_port)
+    print("  credential_dir: ", args.credential_dir)
+    print("  stats_every:    ", args.stats_every)
+    print("  verbose:        ", args.verbose)
+    print()
+
+    ctx  = zmq.Context()
+
+    rates_socket = ctx.socket(zmq.PULL)
+    rates_socket.bind(ZMQ_URI_RATES)
+
+    ctrl_socket = ctx.socket(zmq.PUB)
+    ctrl_socket.bind(ZMQ_URI_CONTROL)
+
+    workers = [mp.Process(target=run_worker, args=(i, args.input_port+i, args.credential_dir, args.stats_every, args.verbose))
+                  for i in range(args.parallelism)]
+
+    for w in workers:
+        w.start()
+
+    def shutdown(signum, frame):
+        print("\nTelling workers to shut down ...")
+        ctrl_socket.send_string("stop")        # broadcast to all workers at once
+        print("Joining workers...")
+        for w in workers:
+            w.join()
+        print("Done joining workers.")
+        rates_socket.close()
+        ctrl_socket.close()
+        ctx.term()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown)
+
+    while True:
+        msg = rates_socket.recv_pyobj()         # blocks until any worker sends
+        print(
+            f"Worker {msg['id']} processed={msg['processed_count']} dropped={msg['dropped_count']} "
+            f"rate={msg['rate']:.1f} msg/s"
+        )
+
+
 
