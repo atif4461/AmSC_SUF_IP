@@ -1,6 +1,6 @@
 
 import argparse
-from amsc import reserver,source,worker,sink,launcher,server
+from amsc import reserver,source,worker,sink,launcher,server,unreserver
 
 
 def main(argv=None):
@@ -22,6 +22,11 @@ def main(argv=None):
     res_parser = subparsers.add_parser("reserve", help="Reserve an EJFAT load balancer instance")
     reserver.add_arguments(res_parser)
     res_parser.set_defaults(func=reserver.run)
+
+    # unreserve
+    unres_parser = subparsers.add_parser("unreserve", help="Unreserve an EJFAT load balancer instance")
+    unreserver.add_arguments(unres_parser)
+    unres_parser.set_defaults(func=unreserver.run)
 
     # run-source
     source_parser = subparsers.add_parser("run-source", help="Run source process")

@@ -9,15 +9,15 @@ from amsc import credentials
 def add_arguments(parser):
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--name", default="amsc_demo_2.1", help="Name of reservation")
-    parser.add_argument("--duration", default="01:00:00", help="Duration of reservation")
+    parser.add_argument("--duration", default="48", help="Duration of reservation [hours]")
 
 
 def run(args):
 
     print("Reserving EJFAT load balancer instance")
-    print("  credential_dir:  ", args.credential_dir)
     print("  name:            ", args.name)
-    print("  duration:        ", args.duration)
+    print("  duration [hrs]:  ", args.duration)
+    print("  credential_dir:  ", args.credential_dir)
 
     reserve_ejfat(args.credential_dir, args.name, args.duration)
 

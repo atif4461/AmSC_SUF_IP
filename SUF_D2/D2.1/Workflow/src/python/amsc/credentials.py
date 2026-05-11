@@ -26,6 +26,21 @@ def get_zmq_address(credential_dir):
         return line.strip()
 
 
+def clear(credential_dir):
+    try:
+        os.remove(pathlib.Path(credential_dir) / sink_filename)
+    except:
+        pass
+    try:
+        os.remove(pathlib.Path(credential_dir) / raw_filename)
+    except:
+        pass
+    try:
+        os.remove(pathlib.Path(credential_dir) / processed_filename)
+    except:
+        pass
+
+
 def put_zmq_address(credential_dir):
 
     temp_filepath = pathlib.Path(credential_dir) / (sink_filename + ".tmp")
