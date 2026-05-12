@@ -26,6 +26,7 @@ def add_arguments(parser):
     parser.add_argument("--max-event-rate", type=float, default=None, help="Max (physics) event rate [Hz]")
     parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Preload data before starting streaming, to achieve higher event rates")
     parser.add_argument("--preload-count", type=int, default=1, help="Number of batches to preload. -1 denotes all batches")
+    parser.add_argument("--mtu", type=int, default=1500, help="Max transmission unit (set to 9000 when the network supports it)")
 
 
 ZMQ_URI_RATES = "tcp://127.0.0.1:5551"
@@ -43,7 +44,7 @@ def run_source(id, args):
     print("  ejfat_uri_processed:  ", ejfat_uri_processed)
     print()
 
-    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id, args.mtu)
     ejfat_sender.connect()
 
     ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.input_port+id)
@@ -153,6 +154,7 @@ def run_source(id, args):
             except Exception as exc:
                 decode_failures += 1
                 print(f"Warning: failed to decode processed payload ({decode_failures} errors): {exc}")
+                print(evt_bytes)
                 processed_tables = None
 
             if processed_tables is not None:
@@ -217,6 +219,7 @@ def run(args):
     print("  max_event_rate: ", args.max_event_rate)
     print("  preload:        ", args.preload)
     print("  preload_count:  ", args.preload_count)
+    print("  mtu:            ", args.mtu)
     print("  verbose:        ", args.verbose)
     print()
 

@@ -3,12 +3,13 @@ import e2sar_py
 
 
 class EjfatSender:
-    def __init__(self, ejfat_uri: str, event_source_id=0):
+    def __init__(self, ejfat_uri: str, event_source_id=0, mtu=1500):
         result = e2sar_py.EjfatURI.get_from_string(ejfat_uri, e2sar_py.EjfatURI.TokenType.instance)
         if result.has_error():
             print("Bad EJFAT_URI: ", result.error())
         self._ejfat_uri = result.value()
         self._event_source_id = 0
+        self._mtu = mtu
 
     def connect(self):
         print("Connecting EJFAT sender...")
@@ -30,6 +31,7 @@ class EjfatSender:
         flags.useCP = True
         flags.dpV6 = USE_IPV6
         flags.numSendSockets = 4
+        flags.mtu = self._mtu
 
         self._segmenter = e2sar_py.DataPlane.Segmenter(
             self._ejfat_uri,
