@@ -65,6 +65,7 @@ RUN apt-get update && apt-get -y install \
   python3 python-is-python3 python3-pip python3-zmq python3-pandas \
   neovim fzf tmux curl
 
+RUN echo "nbrei/amsc_expedition:v6" > /container.md
 
 RUN cd / \
  && git clone https://github.com/JeffersonLab/HDDM \

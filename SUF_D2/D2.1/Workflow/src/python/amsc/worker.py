@@ -15,7 +15,7 @@ def add_arguments(parser):
     parser.add_argument("--parallelism", type=int, default=1, help="Number of parallel processes to launch on this node")
     parser.add_argument("--input-port", type=int, default=19800, help="First port for EJFAT to stream data back to.")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
-    parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
+    parser.add_argument("--stats-every", type=float, default=3.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
 
 

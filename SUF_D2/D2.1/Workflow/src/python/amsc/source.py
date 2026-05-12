@@ -20,12 +20,12 @@ def add_arguments(parser):
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=19900, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
-    parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
+    parser.add_argument("--stats-every", type=float, default=3.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
-    parser.add_argument("--max-event-rate", type=float, default=1.0, help="Max (physics) event rate [Hz]")
+    parser.add_argument("--max-event-rate", type=float, default=None, help="Max (physics) event rate [Hz]")
     parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Preload data before starting streaming, to achieve higher event rates")
-    parser.add_argument("--preload-count", type=int, default=-1, help="Number of batches to preload. -1 denotes all batches")
+    parser.add_argument("--preload-count", type=int, default=1, help="Number of batches to preload. -1 denotes all batches")
 
 
 ZMQ_URI_RATES = "tcp://127.0.0.1:5551"
@@ -85,7 +85,7 @@ def run_source(id, args):
                 break
 
             preloaded.append(msg)
-            if msg_nr >= args.preload_count:
+            if (msg_nr >= args.preload_count) and (args.preload_count > 0):
                 break
 
         print("... Finished preloading data")
@@ -174,7 +174,7 @@ def run_source(id, args):
             proc_rate = recv_processed_count / dt
             mon_rate = forwarded_count / dt
             print(
-                "source "
+                f"Source {id}: "
                 f"raw_sent={sent_raw_count} ({raw_rate:.1f}/s) "
                 f"processed_recv={recv_processed_count} ({proc_rate:.1f}/s) "
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
@@ -185,8 +185,9 @@ def run_source(id, args):
             recv_processed_count = 0
             forwarded_count = 0
 
-        delay = max(args.batch_size/args.max_event_rate - (t2-t1), 0)
-        time.sleep(delay) # seconds
+        if args.max_event_rate is not None:
+            delay = max(args.batch_size/args.max_event_rate - (t2-t1), 0)
+            time.sleep(delay) # seconds
         event_nr += 1
 
 
@@ -202,7 +203,6 @@ def run_source(id, args):
 
 
 def run(args):
-
 
     print("Running EJFAT source:")
     print("  input_filename: ", args.input_filename)
@@ -249,9 +249,9 @@ def run(args):
     signal.signal(signal.SIGINT, shutdown)
 
     while True:
-        msg = rates_socket.recv_pyobj()         # blocks until any worker sends
-        print(
-            f"Worker {msg['id']} processed={msg['processed_count']} dropped={msg['dropped_count']} "
-            f"rate={msg['rate']:.1f} msg/s"
-        )
+        print("Entered loop")
+        msg = rates_socket.recv_pyobj()         # blocks until any source sends
+
+        # Right now nobody sends
+        # But we'd want this for the GUI potentially
 
