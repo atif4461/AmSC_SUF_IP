@@ -7,17 +7,18 @@ import pandas
 import os
 import pickle
 import zmq
+import multiprocessing as mp
 
 from amsc import hddm_reader,credentials,ejfat,message
 
 
 def add_arguments(parser):
     parser.add_argument("input_filename", help="Input REST filename")
-    parser.add_argument("--id", type=int, default=0, help="Event source ID")
+    parser.add_argument("--parallelism", type=int, default=1, help="Number of parallel processes to launch on this node")
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--loop", action=argparse.BooleanOptionalAction, default=True, help="Loop input file for infinite stream")
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
-    parser.add_argument("--input-port", type=int, default=None, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
+    parser.add_argument("--input-port", type=int, default=19900, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
     parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
@@ -27,27 +28,12 @@ def add_arguments(parser):
     parser.add_argument("--preload-count", type=int, default=-1, help="Number of batches to preload. -1 denotes all batches")
 
 
-def run(args):
+ZMQ_URI_RATES = "tcp://127.0.0.1:5551"
+ZMQ_URI_CONTROL = "tcp://127.0.0.1:5552"   # PUB/SUB for broadcast shutdown
 
-    if args.input_port is None:
-        args.input_port = 19900 + args.id
+def run_source(id, args):
 
-    print("Running EJFAT source:")
-    print("  input_filename: ", args.input_filename)
-    print("  id:             ", args.id)
-    print("  credential_dir: ", args.credential_dir)
-    print("  batch_size:     ", args.batch_size)
-    print("  loop:           ", args.loop)
-    print("  include_tables: ", args.include_tables)
-    print("  input_port:     ", args.input_port)
-    print("  monitor_zmq_uri:", args.monitor_zmq_uri)
-    print("  stats_every:    ", args.stats_every)
-    print("  max_event_rate: ", args.max_event_rate)
-    print("  preload:        ", args.preload)
-    print("  preload_count:  ", args.preload_count)
-    print("  verbose:        ", args.verbose)
-    print()
-
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     ejfat_uri_raw = credentials.get_ejfat_uri_raw(args.credential_dir)
     ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
@@ -57,15 +43,30 @@ def run(args):
     print("  ejfat_uri_processed:  ", ejfat_uri_processed)
     print()
 
-    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, args.id)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id)
     ejfat_sender.connect()
 
-    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.input_port)
+    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.input_port+id)
     ejfat_receiver.connect()
 
-    # ZMQ link to monitoring process
+    # ZMQ link to supervisor
     zmq_ctx = zmq.Context.instance()
+    rates_socket = zmq_ctx.socket(zmq.PUSH)
+    rates_socket.setsockopt(zmq.LINGER, 0) # Discard any unsent messages on shutdown
+    rates_socket.connect(ZMQ_URI_RATES)        # supervisor binds, workers connect
+
+    ctrl_socket = zmq_ctx.socket(zmq.SUB)
+    ctrl_socket.connect(ZMQ_URI_CONTROL)
+    ctrl_socket.setsockopt_string(zmq.SUBSCRIBE, "")   # subscribe to all messages
+
+    poller = zmq.Poller()
+    poller.register(ctrl_socket, zmq.POLLIN)   # only need to poll control channel;
+
+
+
+    # ZMQ link to monitoring process
     monitor_sock = zmq_ctx.socket(zmq.PUSH)
+    monitor_sock.setsockopt(zmq.LINGER, 0) # Discard any unsent messages on shutdown
     monitor_sock.connect(args.monitor_zmq_uri)
     print("Connected monitor ZMQ PUSH:", args.monitor_zmq_uri)
 
@@ -89,16 +90,6 @@ def run(args):
 
         print("... Finished preloading data")
 
-    # Loop until killed
-    running = True
-    def shutdown(signum, frame):
-        nonlocal running
-        running = False
-        print("\nShutdown requested...")
-
-    signal.signal(signal.SIGINT, shutdown)
-    signal.signal(signal.SIGTERM, shutdown)
-
     event_nr = 0
     sent_raw_count = 0
     recv_processed_count = 0
@@ -108,7 +99,7 @@ def run(args):
     stats_every = max(1, int(args.stats_every))
     t0 = time.monotonic()
 
-    while running:
+    while True:
         t1 = time.monotonic()
 
         if args.preload:
@@ -137,6 +128,13 @@ def run(args):
             print(f"Sending raw data batch {event_nr} of size {len(data)}")
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
+
+        # Receive ZMQ shutdown message (nonblocking)
+        if poller.poll(0):
+            msg = ctrl_socket.recv_string()
+            if msg == "stop":
+                print(f"Source {id}: Received shutdown message")
+                break
 
         # Quickly check if we've received something
         evt_length, evt_bytes, evt_nr, data_id = ejfat_receiver.recv(1)
@@ -194,8 +192,66 @@ def run(args):
 
     ejfat_sender.disconnect()
     ejfat_receiver.disconnect()
+
+    print("Closing ZMQ sockets...")
+    ctrl_socket.close()
+    rates_socket.close()
     monitor_sock.close()
     zmq_ctx.term()
 
 
+
+def run(args):
+
+
+    print("Running EJFAT source:")
+    print("  input_filename: ", args.input_filename)
+    print("  parallelism:    ", args.parallelism)
+    print("  credential_dir: ", args.credential_dir)
+    print("  batch_size:     ", args.batch_size)
+    print("  loop:           ", args.loop)
+    print("  include_tables: ", args.include_tables)
+    print("  input_port:     ", args.input_port)
+    print("  monitor_zmq_uri:", args.monitor_zmq_uri)
+    print("  stats_every:    ", args.stats_every)
+    print("  max_event_rate: ", args.max_event_rate)
+    print("  preload:        ", args.preload)
+    print("  preload_count:  ", args.preload_count)
+    print("  verbose:        ", args.verbose)
+    print()
+
+    ctx  = zmq.Context()
+
+    rates_socket = ctx.socket(zmq.PULL)
+    rates_socket.bind(ZMQ_URI_RATES)
+
+    ctrl_socket = ctx.socket(zmq.PUB)
+    ctrl_socket.bind(ZMQ_URI_CONTROL)
+
+    workers = [mp.Process(target=run_source, args=(i, args))
+                  for i in range(args.parallelism)]
+
+    for w in workers:
+        w.start()
+
+    def shutdown(signum, frame):
+        print("\nTelling sources to shut down ...")
+        ctrl_socket.send_string("stop")        # broadcast to all workers at once
+        print("Joining workers...")
+        for w in workers:
+            w.join()
+        print("Done joining workers.")
+        rates_socket.close()
+        ctrl_socket.close()
+        ctx.term()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown)
+
+    while True:
+        msg = rates_socket.recv_pyobj()         # blocks until any worker sends
+        print(
+            f"Worker {msg['id']} processed={msg['processed_count']} dropped={msg['dropped_count']} "
+            f"rate={msg['rate']:.1f} msg/s"
+        )
 
