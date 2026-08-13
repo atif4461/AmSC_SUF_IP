@@ -86,7 +86,7 @@ class EjfatReceiver:
         if self._ip_addr:
             self._reassembler = e2sar_py.DataPlane.Reassembler(
                 self._ejfat_uri,
-                self._ip_addr,
+                e2sar_py.IPAddress.from_string(self._ip_addr),
                 self._input_port,
                 self._thread_count,
                 self._flags
