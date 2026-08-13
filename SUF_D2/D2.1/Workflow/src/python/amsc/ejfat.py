@@ -3,13 +3,14 @@ import e2sar_py
 
 
 class EjfatSender:
-    def __init__(self, ejfat_uri: str, event_source_id=0, mtu=1500):
+    def __init__(self, ejfat_uri: str, event_source_id=0, mtu=1500, ip_addr:str=None):
         result = e2sar_py.EjfatURI.get_from_string(ejfat_uri, e2sar_py.EjfatURI.TokenType.instance)
         if result.has_error():
             print("Bad EJFAT_URI: ", result.error())
         self._ejfat_uri = result.value()
         self._event_source_id = 0
         self._mtu = mtu
+        self._ip_addr = ip_addr
 
     def connect(self):
         print("Connecting EJFAT sender...")
@@ -18,7 +19,10 @@ class EjfatSender:
         USE_HOST_ADDRESS = False
 
         self._manager = e2sar_py.ControlPlane.LBManager(self._ejfat_uri, VALIDATE, USE_HOST_ADDRESS)
-        result = self._manager.add_sender_self(USE_IPV6)
+        if (self._ip_addr):
+            result = self._manager.add_senders([self._ip_addr])
+        else:
+            result = self._manager.add_sender_self(USE_IPV6)
 
         if result.has_error():
             print("Error registering as sender: ", result.error().message)
@@ -58,12 +62,13 @@ class EjfatSender:
 
 class EjfatReceiver:
 
-    def __init__(self, name, ejfat_uri, input_port, thread_count=1):
+    def __init__(self, name, ejfat_uri, ip_addr, input_port, thread_count=1):
 
         result = e2sar_py.EjfatURI.get_from_string(ejfat_uri, e2sar_py.EjfatURI.TokenType.instance)
         if result.has_error():
             print("Bad EJFAT_URI: ", result.error())
         self._ejfat_uri = result.value()
+        self._ip_addr = ip_addr
 
         self._name = name
         self._input_port = input_port
@@ -78,12 +83,21 @@ class EjfatReceiver:
     def connect(self):
         print("Connecting EJFAT receiver...")
         # Create the reassembler
-        self._reassembler = e2sar_py.DataPlane.Reassembler(
-            self._ejfat_uri,
-            self._input_port,
-            self._thread_count,
-            self._flags
-        )
+        if self._ip_addr:
+            self._reassembler = e2sar_py.DataPlane.Reassembler(
+                self._ejfat_uri,
+                self._ip_addr,
+                self._input_port,
+                self._thread_count,
+                self._flags
+            )
+        else:
+            self._reassembler = e2sar_py.DataPlane.Reassembler(
+                self._ejfat_uri,
+                self._input_port,
+                self._thread_count,
+                self._flags
+            )
 
         print("    data_ip=", self._reassembler.get_dataIP())
         print("    port_range=", self._reassembler.get_portRange())

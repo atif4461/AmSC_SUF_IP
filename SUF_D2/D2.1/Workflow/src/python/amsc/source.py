@@ -27,6 +27,7 @@ def add_arguments(parser):
     parser.add_argument("--preload", action=argparse.BooleanOptionalAction, default=True, help="Preload data before starting streaming, to achieve higher event rates")
     parser.add_argument("--preload-count", type=int, default=1, help="Number of batches to preload. -1 denotes all batches")
     parser.add_argument("--mtu", type=int, default=1500, help="Max transmission unit (set to 9000 when the network supports it)")
+    parser.add_argument("--ip", type=str, default=None, help="IP address to register with LB (defaults to autoip)")
 
 
 ZMQ_URI_RATES = "tcp://127.0.0.1:5551"
@@ -44,10 +45,10 @@ def run_source(id, args):
     print("  ejfat_uri_processed:  ", ejfat_uri_processed)
     print()
 
-    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id, args.mtu)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id, args.mtu, args.ip)
     ejfat_sender.connect()
 
-    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.input_port+id)
+    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.ip, args.input_port+id)
     ejfat_receiver.connect()
 
     # ZMQ link to supervisor

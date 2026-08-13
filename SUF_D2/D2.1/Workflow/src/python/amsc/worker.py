@@ -17,6 +17,7 @@ def add_arguments(parser):
     parser.add_argument("--credential-dir", default=credentials.default_credential_dir, help="Directory for sharing ZMQ and EJFAT credentials")
     parser.add_argument("--stats-every", type=float, default=3.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
+    parser.add_argument("--ip", type=str, default=None, help="IP address to register with LB (defaults to autoip)")
 
 
 def process_data(serialized_data: bytes, verbose: bool) -> bytes:
@@ -156,9 +157,9 @@ def process_data(serialized_data: bytes, verbose: bool) -> bytes:
 ZMQ_URI_RATES = "tcp://127.0.0.1:5558"
 ZMQ_URI_CONTROL = "tcp://127.0.0.1:5559"   # PUB/SUB for broadcast shutdown
 
-def run_worker(id, input_port, credential_dir, stats_every, verbose):
+def run_worker(id, ip_addr, input_port, credential_dir, stats_every, verbose):
 
-    print(f"Launching worker {id} on port {input_port}")
+    print(f"Launching worker {id} with IP {ip_addr} on port {input_port}")
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -191,7 +192,7 @@ def run_worker(id, input_port, credential_dir, stats_every, verbose):
     sink_socket.connect(zmq_uri_sink)
 
     # Connect to EJFAT
-    receiver = ejfat.EjfatReceiver("worker" + str(id), ejfat_uri_raw, input_port)
+    receiver = ejfat.EjfatReceiver("worker" + str(id), ejfat_uri_raw, ip_addr, input_port)
     receiver.connect()
 
     # Loop until shutdown request
@@ -246,6 +247,7 @@ def run_worker(id, input_port, credential_dir, stats_every, verbose):
 def run(args):
     print("Running workers:")
     print("  parallelism:    ", args.parallelism)
+    print("  ip:             ", args.ip)
     print("  input_port:     ", args.input_port)
     print("  credential_dir: ", args.credential_dir)
     print("  stats_every:    ", args.stats_every)
@@ -260,7 +262,7 @@ def run(args):
     ctrl_socket = ctx.socket(zmq.PUB)
     ctrl_socket.bind(ZMQ_URI_CONTROL)
 
-    workers = [mp.Process(target=run_worker, args=(i, args.input_port+i, args.credential_dir, args.stats_every, args.verbose))
+    workers = [mp.Process(target=run_worker, args=(i, args.ip, args.input_port+i, args.credential_dir, args.stats_every, args.verbose))
                   for i in range(args.parallelism)]
 
     for w in workers:

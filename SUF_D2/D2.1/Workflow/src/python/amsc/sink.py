@@ -13,6 +13,7 @@ def add_arguments(parser):
     parser.add_argument("--stats-every", type=float, default=1.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--mtu", type=int, default=1500, help="EJFAT max transmission unit")
+    parser.add_argument("--ip", type=str, default=None, help="IP address to register with LB (defaults to autoip)")
 
 
 def process_data(data: bytes, verbose) -> bytes:
@@ -29,6 +30,7 @@ def run(args):
     print("    credential_dir: ", args.credential_dir)
     print("    stats_every:    ", args.stats_every)
     print("    mtu:            ", args.mtu)
+    print("    ip:             ", args.ip)
     print("    verbose:        ", args.verbose)
     print()
 
@@ -43,7 +45,7 @@ def run(args):
 
     # Fire up EJFAT
     ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)
-    ejfat_sender = ejfat.EjfatSender(ejfat_uri_processed, 0, args.mtu)
+    ejfat_sender = ejfat.EjfatSender(ejfat_uri_processed, 0, args.mtu, args.ip)
     ejfat_sender.connect()
     print("Connected to EJFAT: ", ejfat_uri_processed)
     print()
