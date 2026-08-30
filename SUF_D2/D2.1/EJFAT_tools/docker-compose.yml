@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  ejfat-local:
+    build: .
+    container_name: ejfat-local
+    environment:
+      - EJFAT_PUBLIC_HOST=127.0.0.1
+      - EJFAT_API_PORT=18080
+      - EJFAT_SYNC_PORT=19020
+      - EJFAT_DATA_PORT=18020
+      - EJFAT_DATA_MIN_PORT=18020
+      - EJFAT_DATA_MAX_PORT=18020
+      - EJFAT_EMULATED_DROP_RATE=0.005
+      - EJFAT_STATE_DIR=/tmp/ejfat-emulator
+      - EJFAT_DATA_WORKERS=4
+      - EJFAT_METRICS_FLUSH_INTERVAL_MS=100
+      - EJFAT_PIN_WORKERS=false
+      - EJFAT_PIN_BASE_CPU=0
+    ports:
+      - "18080:18080/tcp"
+      - "18020:18020/udp"
+      - "19020:19020/udp"

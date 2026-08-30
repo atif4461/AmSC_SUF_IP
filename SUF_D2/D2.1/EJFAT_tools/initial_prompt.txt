@@ -1,0 +1,65 @@
+
+I need some help with a project for the American Science Cloud. We are working on a 
+demonstrator that implements a workflow that streams data at high speed from one
+national lab (e.g. BNL) to another (e.g. JLab or NERSC). The workflow uses the EJFAT
+system for the streaming which means it uses the E2SAR library which can be found here:
+
+https://github.com/JeffersonLab/E2SAR
+
+
+Some documentation on how to use this with NERSC/perlmutter can be found here:
+
+https://github.com/JeffersonLab/E2SAR/wiki/Zero-to-Hero-Scripts
+
+
+There is a REST API that allows one to create and release reservations of the 
+ESNet EJFAT Load Balancers that is described here:
+
+https://amsc-data-api.nersc.gov/docs
+
+
+NAthan Brei did some work on this project in the repository at this link, but I'am
+not sure how far it got or exactly which parts of it may be relevant.
+
+https://code.jlab.org/nbrei/amsc_expedition
+
+
+The following link is to a repository where an example user interface was created
+that could simulate how configuring and running a workflow via a web browser might
+look.
+
+https://code.jlab.org/davidl/AmSC-SUF-IP/-/tree/main/SUF_D2?ref_type=heads
+
+
+
+OK, so here is what I would like for you to do:
+
+Build a local EJFAT load balancer in a docker container that does not use an FPGA
+so can just be run locally on CPU to develop other software for this demo. Something
+like this may already exist in the E2SAR repository so don't re-invent anything.
+I would like the docker container to also serve a REST API like the one pointed to
+by the link about. It does not need to implement everything, but it should implement
+the EJFAT features so that software we build to use it for making Load Balancer
+reservations can be developed offline. Thus the container will have:
+
+- REST API
+- Emulated Load Balancer
+- EJFAT Control Plane
+
+To be clear, I want this to be a fully functional EJFAT system. It will obviously be
+very limited by the bandwidth it can handle since it will be running on the CPU
+and not a high speed FPGA. It should be functional enough though that software 
+developed using it will also be fully functional so when we are ready, it can simply
+be pointed to the ESNet or JLab hosted Load Balancer and it should work.
+
+Please include scripts to test this. There should be monitoring that uses the
+features we will get in the actual control plane. When I run the test, I want
+to be able to see an updating display (TUI) that is gathering data from the 
+control plane, but also the test sender and receiver(s). Again, the emulated
+control plane should only have features and connectivity like a real EJFAT LB
+so when I point the whole test system at a real EJFAT system, it will function
+the same way. It should monitor things like send and receive rates, packet loss,
+etc.
+
+
+

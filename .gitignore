@@ -1,2 +1,12 @@
 
 SUF_D2/D2.1/proxy_simulator.log
+
+# EJFAT_tools generated/runtime artifacts
+SUF_D2/D2.1/EJFAT_tools/.venv/
+SUF_D2/D2.1/EJFAT_tools/.tmp/
+SUF_D2/D2.1/EJFAT_tools/artifacts/
+SUF_D2/D2.1/EJFAT_tools/INSTANCE_URI
+SUF_D2/D2.1/EJFAT_tools/reservation.json
+SUF_D2/D2.1/EJFAT_tools/*.log
+SUF_D2/D2.1/EJFAT_tools/sender_*.log
+SUF_D2/D2.1/EJFAT_tools/receiver*.log
