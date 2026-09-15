@@ -1,0 +1,128 @@
+import json
+import os
+import posixpath
+import uuid
+
+from config import (
+    MAX_MYA_OUTPUT_BYTES,
+    MYA_OUTPUT_DIR,
+    WORKER_QUERY_TIMEOUT_SECONDS,
+    required_env,
+)
+from globus_service import (
+    submit_transfer_for_job,
+    transfer_client_from_token_reference,
+)
+from jobs import get_job, update_job
+from mya_query import run_mya_query
+from worker_limits import LimitedTextWriter, run_with_timeout
+
+
+def run_and_export_mya_query(job, temporary_path):
+    data = run_mya_query(job["query_type"], job["query_params"])
+    extension = "json" if job["query_type"] in ("point", "channel") else "csv"
+    with open(temporary_path, "w", encoding="utf-8", newline="") as output_file:
+        limited_output = LimitedTextWriter(output_file, MAX_MYA_OUTPUT_BYTES)
+        if extension == "json":
+            json.dump(data, limited_output, indent=2, default=str)
+        else:
+            data.to_csv(limited_output)
+    return len(data) if hasattr(data, "__len__") else 1
+
+
+def execute_mya_query(job):
+    extension = "json" if job["query_type"] in ("point", "channel") else "csv"
+    filename = f"mya-{uuid.uuid4()}.{extension}"
+    output_path = os.path.join(MYA_OUTPUT_DIR, filename)
+    temporary_path = output_path + ".part"
+    source_path = posixpath.join(
+        required_env("SOURCE_DIRECTORY").rstrip("/") or "/",
+        filename,
+    )
+    os.makedirs(MYA_OUTPUT_DIR, exist_ok=True)
+
+    result, result_value = run_with_timeout(
+        run_and_export_mya_query,
+        (job, temporary_path),
+        WORKER_QUERY_TIMEOUT_SECONDS,
+    )
+    if result != "complete":
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        error_messages = {
+            "timeout": "MYA query exceeded the execution time limit.",
+            "output_limit": "MYA query output exceeded the export size limit.",
+            "failed": (
+                f"MYA query failed: {result_value}"
+                if result_value
+                else "MYA query failed unexpectedly. Contact support."
+            ),
+        }
+        return update_job(
+            job["job_id"],
+            status="query_failed",
+            error_message=error_messages[result],
+        )
+
+    try:
+        os.replace(temporary_path, output_path)
+    except Exception:
+        try:
+            os.remove(temporary_path)
+        except FileNotFoundError:
+            pass
+        raise
+    completed_job = update_job(
+        job["job_id"],
+        source_path=source_path,
+        status="query_complete",
+        error_message=None,
+    )
+    completed_job["row_count"] = result_value
+    return completed_job
+
+
+def execute_job_transfer(job):
+    if not job.get("transfer_requested"):
+        return job
+    required_fields = (
+        "source_collection_id",
+        "source_path",
+        "destination_collection_id",
+        "destination_path",
+    )
+    if any(not job.get(field) for field in required_fields):
+        return update_job(
+            job["job_id"],
+            status="transfer_failed",
+            error_message="Job is missing required transfer details.",
+        )
+    if not job.get("token_reference"):
+        return update_job(
+            job["job_id"],
+            status="transfer_auth_failed",
+            error_message="No durable Globus authorization is available.",
+        )
+
+    client = transfer_client_from_token_reference(job["token_reference"])
+    if client is None:
+        return update_job(
+            job["job_id"],
+            status="transfer_auth_failed",
+            error_message="Stored Globus authorization is unavailable.",
+        )
+
+    update_job(job["job_id"], status="transfer_submitting", error_message=None)
+    submit_transfer_for_job(
+        client,
+        job_id=job["job_id"],
+        source_collection_id=job["source_collection_id"],
+        source_path=job["source_path"],
+        destination_collection_id=job["destination_collection_id"],
+        destination_collection_name=job["destination_collection_name"],
+        destination_folder=job["destination_path"],
+        transfer_label_value=job["transfer_label"] or "",
+    )
+    return get_job(job["job_id"])

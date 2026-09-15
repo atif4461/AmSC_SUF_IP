@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>AmSC Globus Data Delivery</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <h1 class="brand">AmSC Globus Data Delivery</h1>
+        {% if logged_in %}
+          <form action="{{ url_for('logout') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="topbar-link">Logout</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="stack">
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+          <div class="notice notice-{{ category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+
+        {% if logged_in %}
+          <section class="panel">
+            <span class="status">Logged in with Globus</span>
+          </section>
+
+          <section class="panel">
+            <h2>Query Maya</h2>
+
+            <div class="request-stack">
+              <section class="subpanel">
+                <form id="query-form" action="{{ url_for('query_mya') }}" method="post">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="query_type" value="mysampler">
+                  <div class="query-tabs" role="tablist" aria-label="MYA query type">
+                    {% for query_type, query_name in (
+                      ('mysampler', 'MySampler'),
+                      ('interval', 'Interval'),
+                      ('mystats', 'MyStats'),
+                      ('point', 'Point'),
+                      ('channel', 'Channel')
+                    ) %}
+                      <button
+                        type="button"
+                        class="query-tab{% if query_type == 'mysampler' %} is-active{% endif %}"
+                        data-query-tab="{{ query_type }}"
+                        role="tab"
+                        aria-selected="{{ 'true' if query_type == 'mysampler' else 'false' }}"
+                      >{{ query_name }}</button>
+                    {% endfor %}
+                  </div>
+
+                  <section class="query-panel form-grid" data-query-panel="mysampler">
+                    <h3 class="field-wide">MySampler Query</h3>
+                    <label>
+                      Start
+                      <input type="datetime-local" name="mysampler_start" required>
+                    </label>
+                    <label>
+                      Interval (milliseconds)
+                      <input type="number" name="mysampler_interval" min="1" value="60000" required>
+                    </label>
+                    <label>
+                      Samples
+                      <input type="number" name="mysampler_num_samples" min="1" max="100000" value="10" required>
+                    </label>
+                    <label class="field-wide">
+                      <span class="field-label">
+                        PVs (comma-separated)
+                        <span class="pv-help" tabindex="0" aria-label="Help choosing EPICS variables">
+                          ?
+                          <span class="pv-help-tooltip" role="tooltip">
+                            MYA queries require EPICS variable names. You can try values from this
+                            <a href="https://docs.google.com/spreadsheets/d/1C6lJ3S_5pj_ariDfMVNg5n1iyFbjDV4QYBcpYHo6-90/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">sample Hall-D list</a>, however is not a complete list of available variables.
+                          </span>
+                        </span>
+                      </span>
+                      <input name="mysampler_pvlist" maxlength="25699" required>
+                      <small>Demo limitation: Only PVs available for now are channel100, channel101, and channel102. Queries using other PVs will fail. More PVs, including examples listed in the help-icon spreadsheet, will be supported in the future.</small>
+                    </label>
+                  </section>
+
+                  <section class="query-panel form-grid" data-query-panel="interval" hidden>
+                    <h3 class="field-wide">Interval Query</h3>
+                    <label>
+                      Begin
+                      <input type="datetime-local" name="interval_begin" required disabled>
+                    </label>
+                    <label>
+                      End
+                      <input type="datetime-local" name="interval_end" required disabled>
+                    </label>
+                    <label>
+                      Channel (when querying one PV)
+                      <input name="interval_channel" maxlength="256" disabled>
+                    </label>
+                    <label class="field-wide">
+                      <span class="field-label">
+                        PVs (comma-separated, instead of channel)
+                        <span class="pv-help" tabindex="0" aria-label="Help choosing EPICS variables">
+                          ?
+                          <span class="pv-help-tooltip" role="tooltip">
+                            MYA queries require EPICS variable names. You can try values from this
+                            <a href="https://docs.google.com/spreadsheets/d/1C6lJ3S_5pj_ariDfMVNg5n1iyFbjDV4QYBcpYHo6-90/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">sample Hall-D list</a>, which is not a complete list of available variables.
+                          </span>
+                        </span>
+                      </span>
+                      <input name="interval_pvlist" maxlength="25699" disabled>
+                      <small>Demo limitation: Only PVs available for now are channel100, channel101, and channel102. Queries using other PVs will fail. More PVs, including examples listed in the help-icon spreadsheet, will be supported in the future.</small>
+                    </label>
+                    <label class="checkbox-label field-wide">
+                      <input type="checkbox" name="interval_prior_point" value="true" checked disabled>
+                      Include the point immediately before the interval
+                    </label>
+                  </section>
+
+                  <section class="query-panel form-grid" data-query-panel="mystats" hidden>
+                    <h3 class="field-wide">MyStats Query</h3>
+                    <label>
+                      Start
+                      <input type="datetime-local" name="mystats_start" required disabled>
+                    </label>
+                    <label>
+                      End
+                      <input type="datetime-local" name="mystats_end" required disabled>
+                    </label>
+                    <label>
+                      Bins
+                      <input type="number" name="mystats_num_bins" min="1" max="10000" value="24" required disabled>
+                    </label>
+                    <label class="field-wide">
+                      <span class="field-label">
+                        PVs (comma-separated)
+                        <span class="pv-help" tabindex="0" aria-label="Help choosing EPICS variables">
+                          ?
+                          <span class="pv-help-tooltip" role="tooltip">
+                            MYA queries require EPICS variable names. You can try values from this
+                            <a href="https://docs.google.com/spreadsheets/d/1C6lJ3S_5pj_ariDfMVNg5n1iyFbjDV4QYBcpYHo6-90/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">sample Hall-D list</a>, which is not a complete list of available variables.
+                          </span>
+                        </span>
+                      </span>
+                      <input name="mystats_pvlist" maxlength="25699" required disabled>
+                      <small>Demo limitation: Only PVs available for now are channel100, channel101, and channel102. Queries using other PVs will fail. More PVs, including examples listed in the help-icon spreadsheet, will be supported in the future.</small>
+                    </label>
+                  </section>
+
+                  <section class="query-panel form-grid" data-query-panel="point" hidden>
+                    <h3 class="field-wide">Point Query</h3>
+                    <label>
+                      Channel
+                      <input name="point_channel" maxlength="256" required disabled>
+                    </label>
+                    <label>
+                      Time
+                      <input type="datetime-local" name="point_time" required disabled>
+                    </label>
+                  </section>
+
+                  <section class="query-panel form-grid" data-query-panel="channel" hidden>
+                    <h3 class="field-wide">Channel Query</h3>
+                    <label class="field-wide">
+                      Channel pattern
+                      <input name="channel_pattern" maxlength="256" required disabled>
+                    </label>
+                  </section>
+
+                  <div class="actions field-wide">
+                    <button type="submit" name="submit_action" value="query_only" class="button-secondary">
+                      Query Only
+                    </button>
+                  </div>
+                </form>
+
+                <div class="subpanel-header subpanel-section-header">
+                  <h3>Globus Transfer Params</h3>
+                </div>
+                <div class="destination-actions">
+                  <div class="block">
+                    <form action="{{ url_for('search_collections') }}" method="get" class="inline-form">
+                      <label>
+                        Search Globus destination
+                        <input name="q" maxlength="128" required>
+                      </label>
+                      <button type="submit">Search destination</button>
+                    </form>
+                    <form action="{{ url_for('reset_destination') }}" method="post">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button
+                        type="submit"
+                        class="button-secondary"
+                        {% if not destination_collection_id %}disabled{% endif %}
+                      >
+                        Reset destination
+                      </button>
+                    </form>
+                  </div>
+                  <p class="helper">
+                    {% if destination_collection_id %}
+                      Current selected:
+                      <strong>Collection:</strong> {{ destination_collection_name or "Unknown collection" }},
+                      <strong>path:</strong> {{ destination_path or "Choose a path" }}.
+                    {% else %}
+                      <span class="helper-error">No destination selected yet.</span>
+                    {% endif %}
+                  </p>
+                  <label>
+                    Label for Globus Transfer
+                    <input form="query-form" name="transfer_label" maxlength="108" value="test transfer">
+                  </label>
+                  <div class="actions">
+                    <span
+                      {% if not (destination_collection_id and destination_path) %}
+                        title="Choose a destination before submitting the transfer."
+                      {% endif %}
+                    >
+                      <button
+                        form="query-form"
+                        type="submit"
+                        name="submit_action"
+                        value="query_and_transfer"
+                        {% if not (destination_collection_id and destination_path) %}disabled{% endif %}
+                      >
+                        Query &amp; Transfer
+                      </button>
+                    </span>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <div id="jobs-panel">
+            {% include "_jobs.html" %}
+          </div>
+        {% else %}
+          <section class="panel">
+            <h2>Sign in</h2>
+            <p>Not logged in.</p>
+            <p><a class="button" href="{{ url_for('login') }}">Login with Globus</a></p>
+          </section>
+        {% endif %}
+      </div>
+    </main>
+    <script>
+      const queryForm = document.getElementById("query-form");
+
+      if (queryForm) {
+        const draftKey = "amsc-query-draft";
+        const queryTypeField = queryForm.querySelector("[name='query_type']");
+        const queryTabs = queryForm.querySelectorAll("[data-query-tab]");
+        const queryPanels = queryForm.querySelectorAll("[data-query-panel]");
+        const queryFields = document.querySelectorAll(
+          "#query-form input:not([name='csrf_token']), " +
+          "input[form='query-form']:not([name='csrf_token'])"
+        );
+
+        function activateQueryTab(queryType) {
+          queryTypeField.value = queryType;
+          queryTabs.forEach((tab) => {
+            const isActive = tab.dataset.queryTab === queryType;
+            tab.classList.toggle("is-active", isActive);
+            tab.setAttribute("aria-selected", String(isActive));
+          });
+          queryPanels.forEach((panel) => {
+            const isActive = panel.dataset.queryPanel === queryType;
+            panel.hidden = !isActive;
+            panel.querySelectorAll("input").forEach((field) => {
+              field.disabled = !isActive;
+            });
+          });
+        }
+
+        function saveQueryDraft() {
+          const draft = {};
+          queryFields.forEach((field) => {
+            draft[field.name] = field.type === "checkbox" ? field.checked : field.value;
+          });
+          sessionStorage.setItem(draftKey, JSON.stringify(draft));
+        }
+
+        function validatePvList(fieldName) {
+          const field = queryForm.elements[fieldName];
+          const pvs = field.value.split(",").map((pv) => pv.trim()).filter(Boolean);
+          if (pvs.length > 100) {
+            field.setCustomValidity("Enter no more than 100 PVs per query.");
+          } else if (pvs.some((pv) => pv.length > 256)) {
+            field.setCustomValidity("Each PV name must be 256 characters or fewer.");
+          }
+        }
+
+        function validateDateRange(startName, endName) {
+          const startField = queryForm.elements[startName];
+          const endField = queryForm.elements[endName];
+          const start = new Date(startField.value);
+          const end = new Date(endField.value);
+          const maximumWindow = 31 * 24 * 60 * 60 * 1000;
+          if (end <= start) {
+            endField.setCustomValidity("Choose an end time after the start time.");
+          } else if (end - start > maximumWindow) {
+            endField.setCustomValidity("Choose a time range of 31 days or fewer.");
+          }
+        }
+
+        function validateQueryFields() {
+          queryFields.forEach((field) => field.setCustomValidity(""));
+
+          if (queryTypeField.value === "mysampler") {
+            validatePvList("mysampler_pvlist");
+          } else if (queryTypeField.value === "interval") {
+            const channelField = queryForm.elements.interval_channel;
+            const pvField = queryForm.elements.interval_pvlist;
+            if (!channelField.value.trim() && !pvField.value.trim()) {
+              pvField.setCustomValidity("Enter one channel or a comma-separated PV list.");
+            }
+            validatePvList("interval_pvlist");
+            validateDateRange("interval_begin", "interval_end");
+          } else if (queryTypeField.value === "mystats") {
+            validatePvList("mystats_pvlist");
+            validateDateRange("mystats_start", "mystats_end");
+          }
+        }
+
+        try {
+          const draft = JSON.parse(sessionStorage.getItem(draftKey));
+          if (draft) {
+            queryFields.forEach((field) => {
+              if (Object.hasOwn(draft, field.name)) {
+                if (field.type === "checkbox") {
+                  field.checked = draft[field.name];
+                } else {
+                  field.value = draft[field.name];
+                }
+              }
+            });
+          }
+        } catch (error) {
+          sessionStorage.removeItem(draftKey);
+        }
+
+        activateQueryTab(queryTypeField.value);
+        queryTabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            activateQueryTab(tab.dataset.queryTab);
+            saveQueryDraft();
+          });
+        });
+        queryFields.forEach((field) => {
+          field.addEventListener("input", () => {
+            field.setCustomValidity("");
+            saveQueryDraft();
+          });
+          field.addEventListener("change", saveQueryDraft);
+        });
+        queryForm.addEventListener("submit", (event) => {
+          validateQueryFields();
+          if (!queryForm.reportValidity()) {
+            event.preventDefault();
+          }
+        });
+      }
+
+      const jobsPanel = document.getElementById("jobs-panel");
+      let jobsRefreshInProgress = false;
+
+      async function refreshJobsPanel() {
+        if (!jobsPanel || jobsRefreshInProgress || document.hidden) {
+          return;
+        }
+
+        jobsRefreshInProgress = true;
+        try {
+          const response = await fetch("{{ url_for('jobs_table') }}", {
+            cache: "no-store",
+          });
+          if (response.ok) {
+            jobsPanel.innerHTML = await response.text();
+          }
+        } catch {
+          // Keep the current table when a background refresh fails.
+        } finally {
+          jobsRefreshInProgress = false;
+        }
+      }
+
+      setInterval(refreshJobsPanel, 5000);
+    </script>
+  </body>
+</html>
