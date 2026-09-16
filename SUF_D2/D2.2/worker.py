@@ -1,0 +1,74 @@
+import logging
+import os
+import time
+
+from config import CLEANUP_INTERVAL_SECONDS
+from job_execution import execute_job_transfer, execute_mya_query
+from jobs import claim_next_job, update_job
+from retention import cleanup_expired_jobs
+
+
+POLL_INTERVAL_SECONDS = float(os.environ.get("WORKER_POLL_INTERVAL", "2"))
+LOGGER = logging.getLogger(__name__)
+
+
+def clean_up_old_jobs():
+    try:
+        deleted_jobs = cleanup_expired_jobs()
+    except Exception:
+        LOGGER.exception("Scheduled job retention cleanup failed.")
+        return
+    if deleted_jobs:
+        LOGGER.info("Deleted %s expired jobs and their exports.", deleted_jobs)
+
+
+def process_next_job():
+    job = claim_next_job()
+    if job is None:
+        return False
+
+    try:
+        completed_job = execute_mya_query(job)
+    except Exception:
+        LOGGER.exception("Worker failed while processing job %s.", job["job_id"])
+        completed_job = update_job(
+            job["job_id"],
+            status="query_failed",
+            error_message="The MYA worker failed unexpectedly. Contact support.",
+        )
+
+    if (
+        completed_job["status"] == "query_complete"
+        and completed_job["transfer_requested"]
+    ):
+        try:
+            completed_job = execute_job_transfer(completed_job)
+        except Exception:
+            LOGGER.exception("Worker failed while transferring job %s.", job["job_id"])
+            completed_job = update_job(
+                job["job_id"],
+                status="transfer_failed",
+                error_message="The transfer worker failed unexpectedly. Contact support.",
+            )
+
+    print(
+        f"Job {completed_job['job_id']} finished with "
+        f"status {completed_job['status']}",
+        flush=True,
+    )
+    return True
+
+
+def main():
+    print("MYA job worker started.", flush=True)
+    next_cleanup = 0
+    while True:
+        if time.monotonic() >= next_cleanup:
+            clean_up_old_jobs()
+            next_cleanup = time.monotonic() + CLEANUP_INTERVAL_SECONDS
+        if not process_next_job():
+            time.sleep(POLL_INTERVAL_SECONDS)
+
+
+if __name__ == "__main__":
+    main()
