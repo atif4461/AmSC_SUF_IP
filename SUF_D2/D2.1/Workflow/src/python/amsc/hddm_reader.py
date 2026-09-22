@@ -1,9 +1,8 @@
 
-import hddm_r
+from gluex import hddm_r
 import pandas
 from pathlib import Path
 import numpy as np
-import hddm_r
 import xml.etree.ElementTree as ET
 
 from . import message

@@ -1,6 +1,6 @@
 
 import argparse
-from amsc import reserver,source,worker,sink,launcher,server,unreserver
+from amsc import reserver,source,worker,sink,launcher,server,unreserver,loopback,receiver
 
 
 def main(argv=None):
@@ -42,6 +42,11 @@ def main(argv=None):
     sink_parser = subparsers.add_parser("run-sink", help="Run sink process")
     sink.add_arguments(sink_parser)
     sink_parser.set_defaults(func=sink.run)
+
+    # run-loopback
+    loopback_parser = subparsers.add_parser("run-loopback", help="Run EJFAT loopback (sender + receiver)")
+    loopback.add_arguments(loopback_parser)
+    loopback_parser.set_defaults(func=loopback.run)
 
     # parse_args defaults to sys.argv when argv=None
     args = parser.parse_args(argv)

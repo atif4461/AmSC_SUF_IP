@@ -8,7 +8,7 @@ class EjfatSender:
         if result.has_error():
             print("Bad EJFAT_URI: ", result.error())
         self._ejfat_uri = result.value()
-        self._event_source_id = 0
+        self._event_source_id = event_source_id
         self._mtu = mtu
         self._ip_addr = ip_addr
 
