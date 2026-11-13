@@ -48,7 +48,7 @@ def run_source(id, args):
     ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id, args.mtu, args.ip)
     ejfat_sender.connect()
 
-    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.ip, args.input_port+id)
+    ejfat_receiver = ejfat.EjfatReceiver(f"source_receiver{id}", ejfat_uri_processed, args.ip, args.input_port+id)
     ejfat_receiver.connect()
 
     # ZMQ link to supervisor
