@@ -184,9 +184,9 @@ def run_source(id, args):
                 f"raw_sent={sent_raw_count} ({raw_rate:.1f}/s) "
                 f"processed_recv={recv_processed_count} ({proc_rate:.1f}/s) "
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
-                f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures} "
-                f"raw_tx_offered={raw_mb_s:.3f} MB/s ({raw_mb_s * 8:.3f} Mbit/s)"
+                f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
             )
+            rates_socket.send_pyobj({"id": id, "raw_mb_s": raw_mb_s})
             t0 = t2
             sent_raw_count = 0
             sent_raw_bytes = 0
@@ -257,10 +257,15 @@ def run(args):
 
     signal.signal(signal.SIGINT, shutdown)
 
+    source_rates = {}
     while True:
-        print("Entered loop")
         msg = rates_socket.recv_pyobj()         # blocks until any source sends
-
-        # Right now nobody sends
-        # But we'd want this for the GUI potentially
+        source_rates[msg["id"]] = msg["raw_mb_s"]
+        if len(source_rates) == args.parallelism:
+            total_mb_s = sum(source_rates.values())
+            print(
+                f"All sources ({args.parallelism}): "
+                f"raw_tx_offered={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s)"
+            )
+            source_rates.clear()
 
