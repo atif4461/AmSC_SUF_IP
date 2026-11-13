@@ -94,6 +94,7 @@ def run_source(id, args):
 
     event_nr = 0
     sent_raw_count = 0
+    sent_raw_bytes = 0
     recv_processed_count = 0
     forwarded_count = 0
     decode_failures = 0
@@ -130,6 +131,7 @@ def run_source(id, args):
             print(f"Sending raw data batch {event_nr} of size {len(data)}")
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
+        sent_raw_bytes += len(data)
 
         # Receive ZMQ shutdown message (nonblocking)
         if poller.poll(0):
@@ -174,6 +176,7 @@ def run_source(id, args):
         dt = t2 - t0
         if dt > args.stats_every:
             raw_rate = sent_raw_count / dt
+            raw_mb_s = sent_raw_bytes / dt / 1_000_000
             proc_rate = recv_processed_count / dt
             mon_rate = forwarded_count / dt
             print(
@@ -181,10 +184,12 @@ def run_source(id, args):
                 f"raw_sent={sent_raw_count} ({raw_rate:.1f}/s) "
                 f"processed_recv={recv_processed_count} ({proc_rate:.1f}/s) "
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
-                f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
+                f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures} "
+                f"raw_tx_offered={raw_mb_s:.3f} MB/s ({raw_mb_s * 8:.3f} Mbit/s)"
             )
             t0 = t2
             sent_raw_count = 0
+            sent_raw_bytes = 0
             recv_processed_count = 0
             forwarded_count = 0
 
