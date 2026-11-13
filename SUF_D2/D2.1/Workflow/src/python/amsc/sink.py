@@ -14,7 +14,7 @@ def add_arguments(parser):
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--mtu", type=int, default=1500, help="EJFAT max transmission unit")
     parser.add_argument("--ip", type=str, default=None, help="IP address to register with LB (defaults to autoip)")
-
+    parser.add_argument("--zmq-port", type=int, default=5555, help="TCP port for worker results")
 
 def process_data(data: bytes, verbose) -> bytes:
     # Keep data in Arrow/bytes form for efficiency.
@@ -32,16 +32,23 @@ def run(args):
     print("    mtu:            ", args.mtu)
     print("    ip:             ", args.ip)
     print("    verbose:        ", args.verbose)
+    print("    zmq_port:       ", args.zmq_port)
     print()
+
+
+    if not 1 <= args.zmq_port <= 65535:
+        raise ValueError("--zmq-port must be between 1 and 65535")
 
     # Fire up ZMQ
     context = zmq.Context.instance()
     socket = context.socket(zmq.PULL)
-    socket.bind("tcp://0.0.0.0:5555")
+    bind_uri = f"tcp://0.0.0.0:{args.zmq_port}"
+    socket.bind(bind_uri)
 
     # We want to bind the socket _before_ we notify the workers
-    zmq_uri_sink = credentials.put_zmq_address(args.credential_dir)
-    print("Bound ZMQ socket: ", zmq_uri_sink)
+    zmq_uri_sink = credentials.put_zmq_address(args.credential_dir, port=args.zmq_port)
+    print("Bound ZMQ socket: ", bind_uri)
+    print("Advertised ZMQ endpoint: ", zmq_uri_sink)
 
     # Fire up EJFAT
     ejfat_uri_processed = credentials.get_ejfat_uri_processed(args.credential_dir)

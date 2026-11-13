@@ -41,7 +41,7 @@ def clear(credential_dir):
         pass
 
 
-def put_zmq_address(credential_dir):
+def put_zmq_address(credential_dir, port=5555):
 
     temp_filepath = pathlib.Path(credential_dir) / (sink_filename + ".tmp")
     final_filepath = pathlib.Path(credential_dir) / sink_filename
@@ -49,7 +49,7 @@ def put_zmq_address(credential_dir):
     #if final_filepath.exists():
     #    raise Exception(f"ZMQ URI already present in credential directory: {final_filepath}")
 
-    zmq_uri = "tcp://" + socket.gethostname() + ":5555"
+    zmq_uri = f"tcp://{socket.gethostname()}:{port}"
 
     with open(temp_filepath, 'w') as f:
         f.write(zmq_uri)
