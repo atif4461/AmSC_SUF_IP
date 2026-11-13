@@ -1,9 +1,7 @@
 
-import hddm_r
+from gluex import hddm_r
 import pandas
-from pathlib import Path
 import numpy as np
-import hddm_r
 import xml.etree.ElementTree as ET
 
 from . import message
@@ -139,7 +137,15 @@ def process_batch(batch, next_entry):
 
 def process_schemafile(schemafile_name: str):
     tree = ET.parse(schemafile_name)
-    root = tree.getroot()
+    process_schema(tree.getroot())
+
+
+def process_schema(root):
+    # A second reader must not append its schema to the previous reader's tables.
+    hddm_tags.clear()
+    hddm_attributes.clear()
+    hddm_parents.clear()
+    hddm_children.clear()
     process_element("entry", root)
 
 
@@ -198,8 +204,9 @@ class HDDMReader:
 
 
     def __init__(self, filename, batch_size, loop):
-        schemafile = Path(__file__).parent.parent.parent / "cpp/hddm_r/hddm_r.xml"
-        process_schemafile(schemafile)
+        # Generated getters and attributes follow the installed bindings' schema.
+        # The checked-in XML may describe a newer version with unsupported fields.
+        process_schema(ET.fromstring(hddm_r.DocumentString))
 
         self._batch_size = batch_size
         self._filename = filename
