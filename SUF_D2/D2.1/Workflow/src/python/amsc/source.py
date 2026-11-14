@@ -243,6 +243,12 @@ def run(args):
     for w in workers:
         w.start()
 
+    monitor_rates_socket = ctx.socket(zmq.PUSH)
+    monitor_rates_socket.setsockopt(zmq.LINGER, 0)
+    monitor_rates_socket.setsockopt(zmq.SNDHWM, 1)
+    monitor_rates_socket.setsockopt(zmq.IMMEDIATE, 1)
+    monitor_rates_socket.connect(args.monitor_zmq_uri)
+
     def shutdown(signum, frame):
         print("\nTelling sources to shut down ...")
         ctrl_socket.send_string("stop")        # broadcast to all workers at once
@@ -252,6 +258,7 @@ def run(args):
         print("Done joining workers.")
         rates_socket.close()
         ctrl_socket.close()
+        monitor_rates_socket.close()
         ctx.term()
         sys.exit(0)
 
@@ -267,5 +274,12 @@ def run(args):
                 f"All sources ({args.parallelism}): "
                 f"raw_tx_offered={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s)"
             )
+            try:
+                monitor_rates_socket.send_pyobj({
+                    "_amsc_type": "source_bandwidth", "raw_mb_s": total_mb_s,
+                    "source_count": args.parallelism, "report_interval": args.stats_every,
+                }, flags=zmq.NOBLOCK)
+            except zmq.Again:
+                pass
             source_rates.clear()
 
