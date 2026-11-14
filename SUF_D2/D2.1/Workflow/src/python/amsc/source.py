@@ -96,6 +96,8 @@ def run_source(id, args):
     sent_raw_count = 0
     sent_raw_bytes = 0
     recv_processed_count = 0
+    events_sent_total = 0
+    events_received_total = 0
     forwarded_count = 0
     decode_failures = 0
     monitor_send_failures = 0
@@ -132,6 +134,7 @@ def run_source(id, args):
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
         sent_raw_bytes += len(data)
+        events_sent_total += len(msg["reconstructedPhysicsEvent"])
 
         # Receive ZMQ shutdown message (nonblocking)
         if poller.poll(0):
@@ -154,6 +157,7 @@ def run_source(id, args):
                     table_name: processed_msg[table_name]
                     for table_name in processed_msg.keys()
                 }
+                events_received_total += len(processed_tables["reconstructedPhysicsEvent"])
             except Exception as exc:
                 decode_failures += 1
                 print(f"Warning: failed to decode processed payload ({decode_failures} errors): {exc}")
@@ -186,7 +190,11 @@ def run_source(id, args):
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
                 f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
             )
-            rates_socket.send_pyobj({"id": id, "raw_mb_s": raw_mb_s})
+            rates_socket.send_pyobj({
+                "id": id, "raw_mb_s": raw_mb_s,
+                "events_sent_total": events_sent_total,
+                "events_received_total": events_received_total,
+            })
             t0 = t2
             sent_raw_count = 0
             sent_raw_bytes = 0
@@ -267,12 +275,15 @@ def run(args):
     source_rates = {}
     while True:
         msg = rates_socket.recv_pyobj()         # blocks until any source sends
-        source_rates[msg["id"]] = msg["raw_mb_s"]
+        source_rates[msg["id"]] = msg
         if len(source_rates) == args.parallelism:
-            total_mb_s = sum(source_rates.values())
+            total_mb_s = sum(report["raw_mb_s"] for report in source_rates.values())
+            events_sent = sum(report["events_sent_total"] for report in source_rates.values())
+            events_received = sum(report["events_received_total"] for report in source_rates.values())
             print(
                 f"All sources ({args.parallelism}): "
-                f"raw_tx_offered={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s)"
+                f"raw_tx_offered={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s) "
+                f"events_sent_total={events_sent} events_received_total={events_received}"
             )
             try:
                 monitor_rates_socket.send_pyobj({

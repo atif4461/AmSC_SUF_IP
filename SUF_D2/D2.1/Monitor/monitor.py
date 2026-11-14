@@ -456,7 +456,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
         .site-halo { fill: #5ce2db; opacity: .1; }
         .site-dot { fill: #8deee5; stroke: #102132; stroke-width: 2; }
         .site-label { fill: #e2f1f9; font-size: 19px; font-weight: 700; letter-spacing: 1px; paint-order: stroke; stroke: #102132; stroke-width: 3px; }
-        .bandwidth-readout { position: absolute; z-index: 2; top: 55%; left: 50%; transform: translate(-50%, -25%); width: 68%; text-align: center; border-radius: 12px; background: radial-gradient(ellipse, rgba(12, 27, 43, .98) 20%, rgba(12, 27, 43, .75) 55%, transparent 74%); padding: 7px 0; }
+        .bandwidth-readout { position: absolute; z-index: 2; top: 72%; left: 50%; transform: translate(-50%, -25%); width: 68%; text-align: center; border-radius: 12px; background: radial-gradient(ellipse, rgba(12, 27, 43, .98) 20%, rgba(12, 27, 43, .75) 55%, transparent 74%); padding: 7px 0; }
         .bandwidth-number { color: #92eee3; font-size: clamp(28px, 2.8vw, 38px); font-weight: 650; line-height: 1.25; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
         .bandwidth-unit { position: relative; top: 5px; margin-left: 5px; color: #c5e8e8; font-size: 12px; font-weight: 500; letter-spacing: 0; }
         .bandwidth-detail { color: #aac2cf; font-size: 9px; min-height: 14px; }
@@ -500,7 +500,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
             <div class='plot'><div id='plotEPS'></div></div>
             <section class='transfer-card' id='transferCard' data-state='waiting' aria-label='BNL to NERSC live transfer'>
                 <div class='transfer-heading'>
-                    <h2>AGGREGATE SEND BANDWIDTH</h2>
+                    <h2>Aggregate Send Bandwith with EJFAT</h2>
                     <span class='transfer-status' id='transferStatus'>Waiting</span>
                 </div>
                 <!-- TRANSFER_MAP -->
@@ -585,7 +585,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
         }, {displaylogo: false, responsive: true});
     }
 
-    initSeriesPlot('plotEPS', 'Events per second (last 60 s)');
+    initSeriesPlot('plotEPS', 'Events Processed per Second (last 60s)');
     initHistPlot('plotZ0', 'z0 (best chisq/Ndof per candidate)', 'z0', '#dc2626', 220);
     initHistPlot('plotFcal', 'fcalShower energy', 'E', '#2563eb', 220);
     initHistPlot('plotPiPi', 'Invariant mass of all pi+ pi- pairs', 'M(π+π-) [GeV]', '#7c3aed', 320);
