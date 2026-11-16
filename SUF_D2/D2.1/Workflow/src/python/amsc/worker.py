@@ -20,8 +20,7 @@ def add_arguments(parser):
     parser.add_argument("--ip", type=str, default=None, help="IP address to register with LB (defaults to autoip)")
 
 
-def process_data(serialized_data: bytes, verbose: bool) -> bytes:
-    msg = message.Message.from_arrow(serialized_data)
+def process_data(msg: message.Message, verbose: bool) -> bytes:
     if verbose:
         msg.print_short()
 
@@ -198,6 +197,10 @@ def run_worker(id, ip_addr, input_port, credential_dir, stats_every, verbose):
     # Loop until shutdown request
     processed_count = 0
     dropped_count = 0
+    raw_recv_bytes = 0
+    raw_recv_events = 0
+    raw_batches_total = 0
+    raw_events_total = 0
     t0 = time.monotonic()
 
     while True:
@@ -213,24 +216,41 @@ def run_worker(id, ip_addr, input_port, credential_dir, stats_every, verbose):
         evt_length, evt_bytes, evt_nr, data_id = receiver.recv(wait_ms)
 
         if evt_length >= 0:
+            raw_recv_bytes += len(evt_bytes)
+            raw_batches_total += 1
             try:
                 if verbose:
                     print(f"Received evt {evt_nr} from src {data_id} of length {evt_length}")
-                result = process_data(evt_bytes, verbose)
+                raw_msg = message.Message.from_arrow(evt_bytes)
+                n_events = len(raw_msg["reconstructedPhysicsEvent"])
+                raw_recv_events += n_events
+                raw_events_total += n_events
+                result = process_data(raw_msg, verbose)
+
                 sink_socket.send(result)
                 processed_count += 1
 
             except Exception as exc:
                 dropped_count += 1
-                print(f"Warning: Worker {args.id} failed to process event {evt_nr}: {exc}")
+                print(f"Warning: Worker {id} failed to process event {evt_nr}: {exc}")
 
         t1 = time.monotonic()
         if (t1-t0) > stats_every:
-            rate = processed_count / (t1-t0)
-            rates_socket.send_pyobj({"id": id, "processed_count": processed_count, "dropped_count": dropped_count, "rate": rate})
+            dt = t1 - t0
+            rate = processed_count / dt
+            rates_socket.send_pyobj({
+                "id": id, "processed_count": processed_count,
+                "dropped_count": dropped_count, "rate": rate,
+                "raw_mb_s": raw_recv_bytes / dt / 1_000_000,
+                "raw_events_s": raw_recv_events / dt,
+                "raw_batches_total": raw_batches_total,
+                "raw_events_total": raw_events_total,
+            })
             t0 = t1
             processed_count = 0
             dropped_count = 0
+            raw_recv_bytes = 0
+            raw_recv_events = 0
 
     print("Closing ZMQ sockets...")
     sink_socket.close()
@@ -282,12 +302,26 @@ def run(args):
 
     signal.signal(signal.SIGINT, shutdown)
 
+    worker_rates = {}
     while True:
         msg = rates_socket.recv_pyobj()         # blocks until any worker sends
         print(
             f"Worker {msg['id']} processed={msg['processed_count']} dropped={msg['dropped_count']} "
             f"rate={msg['rate']:.1f} msg/s"
         )
-
+        worker_rates[msg["id"]] = msg
+        if len(worker_rates) == args.parallelism:
+            total_mb_s = sum(report["raw_mb_s"] for report in worker_rates.values())
+            total_events_s = sum(report["raw_events_s"] for report in worker_rates.values())
+            total_batches = sum(report["raw_batches_total"] for report in worker_rates.values())
+            total_events = sum(report["raw_events_total"] for report in worker_rates.values())
+            print(
+                f"All workers ({args.parallelism}): "
+                f"raw_rx={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s) "
+                f"raw_events_rate={total_events_s:.1f}/s "
+                f"raw_batches_received_total={total_batches} "
+                f"raw_events_received_total={total_events}"
+            )
+            worker_rates.clear()
 
 
