@@ -20,6 +20,10 @@ def add_arguments(parser):
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=19900, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
+    route = parser.add_mutually_exclusive_group()
+    route.add_argument("--nersc", dest="viz_destination", action="store_const", const="nersc", help="Show BNL to NERSC on the monitor map (default)")
+    route.add_argument("--jlab", dest="viz_destination", action="store_const", const="jlab", help="Show BNL to JLab on the monitor map; does not change EJFAT routing")
+    parser.set_defaults(viz_destination="nersc")
     parser.add_argument("--stats-every", type=float, default=3.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
@@ -229,6 +233,7 @@ def run(args):
     print("  include_tables: ", args.include_tables)
     print("  input_port:     ", args.input_port)
     print("  monitor_zmq_uri:", args.monitor_zmq_uri)
+    print("  viz_destination:", args.viz_destination)
     print("  stats_every:    ", args.stats_every)
     print("  max_event_rate: ", args.max_event_rate)
     print("  preload:        ", args.preload)
@@ -289,6 +294,7 @@ def run(args):
                 monitor_rates_socket.send_pyobj({
                     "_amsc_type": "source_bandwidth", "raw_mb_s": total_mb_s,
                     "source_count": args.parallelism, "report_interval": args.stats_every,
+                    "destination": args.viz_destination,
                 }, flags=zmq.NOBLOCK)
             except zmq.Again:
                 pass

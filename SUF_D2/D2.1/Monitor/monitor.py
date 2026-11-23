@@ -343,11 +343,15 @@ class DashboardState:
         mb_s = float(report["raw_mb_s"])
         source_count = int(report["source_count"])
         interval = float(report["report_interval"])
+        destination = report.get("destination", "nersc")
+        if destination not in ("nersc", "jlab"):
+            raise ValueError("Invalid visualization destination")
         if not math.isfinite(mb_s) or mb_s < 0 or source_count < 1 or not math.isfinite(interval):
             raise ValueError("Invalid source bandwidth report")
         async with self.lock:
             self.send_bandwidth = {
                 "mb_s": mb_s, "mbit_s": mb_s * 8, "source_count": source_count,
+                "destination": destination,
             }
             self.bandwidth_updated = time.monotonic()
             self.bandwidth_timeout = max(10.0, interval * 3)
@@ -508,7 +512,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
                     <div class='bandwidth-number'><span id='sendBandwidth'>—</span><span class='bandwidth-unit' id='sendBandwidthUnit'>Gbit/s</span></div>
                     <div class='bandwidth-detail' id='sendBandwidthDetail'>Waiting for source reports</div>
                 </div>
-                <div class='transfer-footer'><span>BNL, NY &rarr; NERSC, CA</span><span>Offered payload</span></div>
+                <div class='transfer-footer'><span id='transferRouteLabel'>BNL, NY &rarr; NERSC, CA</span><span>Offered payload</span></div>
             </section>
         </div>
         <div class=\"row\">
@@ -532,6 +536,20 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
   const statusEl = document.getElementById('status');
   const transferCard = document.getElementById('transferCard');
   function updateTransfer(bandwidth) {
+    if (bandwidth && bandwidth.destination) {
+      const jlab = bandwidth.destination === 'jlab';
+      const destination = jlab ? 'JLab, VA' : 'NERSC, CA';
+      const path = jlab ? 'M532.0,145.9 C470.0,140.0 470.0,185.0 512.2,200.5' :
+        'M532.0,145.9 C397.0,0.9 226.5,28.6 81.5,173.6';
+      transferCard.querySelectorAll('.route-glow, .route-guide, .route-flow').forEach(el => el.setAttribute('d', path));
+      const gradient = document.getElementById('transferGradient');
+      gradient.setAttribute('x2', jlab ? '512.2' : '81.5');
+      gradient.setAttribute('y2', jlab ? '200.5' : '173.6');
+      document.getElementById('transferRouteLabel').textContent = 'BNL, NY → ' + destination;
+      transferCard.setAttribute('aria-label', 'BNL to ' + destination + ' live transfer');
+      document.getElementById('transferMapTitle').textContent = 'Data transfer from BNL to ' + destination;
+      document.getElementById('transferMapDesc').textContent = 'Map of the contiguous United States. The animated route runs from BNL, New York, to ' + destination + '. Other labeled facilities are reference locations.';
+    }
     const fresh = bandwidth && bandwidth.fresh;
     transferCard.dataset.state = fresh ? (bandwidth.mbit_s > 0 ? 'live' : 'idle') : (bandwidth ? 'stale' : 'waiting');
     document.getElementById('transferStatus').textContent = fresh ? (bandwidth.mbit_s > 0 ? 'Live' : 'Idle') : (bandwidth ? 'Stale' : 'Waiting');
