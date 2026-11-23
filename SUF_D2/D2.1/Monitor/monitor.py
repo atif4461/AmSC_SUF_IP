@@ -13,10 +13,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import pickle
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
@@ -284,6 +286,9 @@ class DashboardState:
         self.update_period = max(1, min(10, int(update_period)))
         self.ring_size = max(2, min(30, int(ring_size)))
         self.events_per_sec: Dict[int, int] = {}
+        self.send_bandwidth = None
+        self.bandwidth_updated = 0.0
+        self.bandwidth_timeout = 10.0
 
         self.hists: Dict[str, HistogramState] = {
             "z0_best": HistogramState(edges=np.linspace(-250.0, 250.0, 101), ring_size=self.ring_size),
@@ -334,6 +339,23 @@ class DashboardState:
             for sec in [s for s in self.events_per_sec.keys() if s < cutoff]:
                 del self.events_per_sec[sec]
 
+    async def ingest_source_bandwidth(self, report: Dict[str, Any]) -> None:
+        mb_s = float(report["raw_mb_s"])
+        source_count = int(report["source_count"])
+        interval = float(report["report_interval"])
+        destination = report.get("destination", "nersc")
+        if destination not in ("nersc", "jlab"):
+            raise ValueError("Invalid visualization destination")
+        if not math.isfinite(mb_s) or mb_s < 0 or source_count < 1 or not math.isfinite(interval):
+            raise ValueError("Invalid source bandwidth report")
+        async with self.lock:
+            self.send_bandwidth = {
+                "mb_s": mb_s, "mbit_s": mb_s * 8, "source_count": source_count,
+                "destination": destination,
+            }
+            self.bandwidth_updated = time.monotonic()
+            self.bandwidth_timeout = max(10.0, interval * 3)
+
     async def take_snapshot(self) -> None:
         async with self.lock:
             for hist in self.hists.values():
@@ -343,6 +365,10 @@ class DashboardState:
 
     async def payload(self) -> Dict[str, Any]:
         async with self.lock:
+            bandwidth = None
+            if self.send_bandwidth is not None:
+                bandwidth = dict(self.send_bandwidth)
+                bandwidth["fresh"] = time.monotonic() - self.bandwidth_updated <= self.bandwidth_timeout
             now_sec = int(time.time())
             # Use only completed whole-second bins.
             # This avoids the rightmost point being artificially low due to
@@ -354,6 +380,7 @@ class DashboardState:
             return {
                 "ring_size": self.ring_size,
                 "update_period": self.update_period,
+                "send_bandwidth": bandwidth,
                 "events_per_sec": {
                     "x": eps_x,
                     "y": eps_y,
@@ -418,8 +445,36 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
         .col { display: flex; flex-direction: column; min-width: 0; }
         .mini-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
         .mini-row .plot { min-width: 0; }
+        .top-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 12px; margin-bottom: 14px; }
+        .top-row > .plot { margin-bottom: 0; }
+        .transfer-card { position: relative; height: 272px; box-sizing: border-box; overflow: hidden; border: 1px solid #2d4660; border-radius: 10px; background: radial-gradient(ellipse at 50% 70%, #19364b 0%, #101d31 70%); }
+        .transfer-heading { position: relative; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: 15px 16px 0; }
+        .transfer-heading h2 { margin: 0; color: #dce8f3; font-size: 10px; letter-spacing: 1.6px; font-weight: 650; }
+        .transfer-status { display: flex; align-items: center; gap: 5px; color: #91a6ba; font-size: 10px; }
+        .transfer-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #64748b; }
+        .transfer-map { position: absolute; inset: 26px 0 0; width: 100%; height: calc(100% - 48px); }
+        .map-state { fill: #1c364d; stroke: #52728a; stroke-width: 0.9; stroke-linejoin: round; }
+        .route-guide { fill: none; stroke: #72b8c5; stroke-opacity: .4; stroke-width: 2; }
+        .route-glow { fill: none; stroke: #6be3de; stroke-opacity: .09; stroke-width: 14; }
+        .route-flow { fill: none; stroke: url(#transferGradient); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 16 30; animation: transfer-flow 1.7s linear infinite; animation-play-state: paused; opacity: 0; }
+        .site-halo { fill: #5ce2db; opacity: .1; }
+        .site-dot { fill: #8deee5; stroke: #102132; stroke-width: 2; }
+        .site-label { fill: #e2f1f9; font-size: 19px; font-weight: 700; letter-spacing: 1px; paint-order: stroke; stroke: #102132; stroke-width: 3px; }
+        .bandwidth-readout { position: absolute; z-index: 2; top: 72%; left: 50%; transform: translate(-50%, -25%); width: 68%; text-align: center; border-radius: 12px; background: radial-gradient(ellipse, rgba(12, 27, 43, .98) 20%, rgba(12, 27, 43, .75) 55%, transparent 74%); padding: 7px 0; }
+        .bandwidth-number { color: #92eee3; font-size: clamp(28px, 2.8vw, 38px); font-weight: 650; line-height: 1.25; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+        .bandwidth-unit { position: relative; top: 5px; margin-left: 5px; color: #c5e8e8; font-size: 12px; font-weight: 500; letter-spacing: 0; }
+        .bandwidth-detail { color: #aac2cf; font-size: 9px; min-height: 14px; }
+        .transfer-footer { position: absolute; bottom: 12px; left: 16px; right: 16px; display: flex; justify-content: space-between; color: #7897ab; font-size: 9px; }
+        .transfer-card[data-state="live"] .route-flow { animation-play-state: running; opacity: 1; }
+        .transfer-card[data-state="live"] .transfer-status { color: #8deee5; }
+        .transfer-card[data-state="live"] .transfer-status::before { background: #5ce2db; box-shadow: 0 0 9px #5ce2db88; }
+        .transfer-card[data-state="stale"] .bandwidth-number,
+        .transfer-card[data-state="waiting"] .bandwidth-number { color: #7897ab; }
+        @keyframes transfer-flow { to { stroke-dashoffset: -46; } }
+        @media (prefers-reduced-motion: reduce) { .route-flow { animation: none; } }
     .status { opacity: 0.85; font-size: 0.95rem; }
         @media (max-width: 900px) {
+            .top-row { grid-template-columns: 1fr; }
             .row { grid-template-columns: 1fr; }
             .mini-row { grid-template-columns: 1fr; }
         }
@@ -445,7 +500,21 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
       </label>
       <div class=\"status\" id=\"status\">Connecting…</div>
     </div>
-        <div class=\"plot\"><div id=\"plotEPS\"></div></div>
+        <div class='top-row'>
+            <div class='plot'><div id='plotEPS'></div></div>
+            <section class='transfer-card' id='transferCard' data-state='waiting' aria-label='BNL to NERSC live transfer'>
+                <div class='transfer-heading'>
+                    <h2>Aggregate Send Bandwith with EJFAT</h2>
+                    <span class='transfer-status' id='transferStatus'>Waiting</span>
+                </div>
+                <!-- TRANSFER_MAP -->
+                <div class='bandwidth-readout' role='status' aria-live='polite'>
+                    <div class='bandwidth-number'><span id='sendBandwidth'>—</span><span class='bandwidth-unit' id='sendBandwidthUnit'>Gbit/s</span></div>
+                    <div class='bandwidth-detail' id='sendBandwidthDetail'>Waiting for source reports</div>
+                </div>
+                <div class='transfer-footer'><span id='transferRouteLabel'>BNL, NY &rarr; NERSC, CA</span><span>Offered payload</span></div>
+            </section>
+        </div>
         <div class=\"row\">
             <div class=\"col\">
                 <div class=\"plot\"><div id=\"plotZ0\"></div></div>
@@ -465,6 +534,31 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
   const ringEl = document.getElementById('ringSize');
   const periodEl = document.getElementById('updatePeriod');
   const statusEl = document.getElementById('status');
+  const transferCard = document.getElementById('transferCard');
+  function updateTransfer(bandwidth) {
+    if (bandwidth && bandwidth.destination) {
+      const jlab = bandwidth.destination === 'jlab';
+      const destination = jlab ? 'JLab, VA' : 'NERSC, CA';
+      const path = jlab ? 'M532.0,145.9 C470.0,140.0 470.0,185.0 512.2,200.5' :
+        'M532.0,145.9 C397.0,0.9 226.5,28.6 81.5,173.6';
+      transferCard.querySelectorAll('.route-glow, .route-guide, .route-flow').forEach(el => el.setAttribute('d', path));
+      const gradient = document.getElementById('transferGradient');
+      gradient.setAttribute('x2', jlab ? '512.2' : '81.5');
+      gradient.setAttribute('y2', jlab ? '200.5' : '173.6');
+      document.getElementById('transferRouteLabel').textContent = 'BNL, NY → ' + destination;
+      transferCard.setAttribute('aria-label', 'BNL to ' + destination + ' live transfer');
+      document.getElementById('transferMapTitle').textContent = 'Data transfer from BNL to ' + destination;
+      document.getElementById('transferMapDesc').textContent = 'Map of the contiguous United States. The animated route runs from BNL, New York, to ' + destination + '. Other labeled facilities are reference locations.';
+    }
+    const fresh = bandwidth && bandwidth.fresh;
+    transferCard.dataset.state = fresh ? (bandwidth.mbit_s > 0 ? 'live' : 'idle') : (bandwidth ? 'stale' : 'waiting');
+    document.getElementById('transferStatus').textContent = fresh ? (bandwidth.mbit_s > 0 ? 'Live' : 'Idle') : (bandwidth ? 'Stale' : 'Waiting');
+    document.getElementById('sendBandwidth').textContent = fresh ? (bandwidth.mbit_s >= 1000 ? bandwidth.mbit_s / 1000 : bandwidth.mbit_s).toFixed(2) : '—';
+    document.getElementById('sendBandwidthUnit').textContent = fresh && bandwidth.mbit_s < 1000 ? 'Mbit/s' : 'Gbit/s';
+    document.getElementById('sendBandwidthDetail').textContent = fresh ?
+      bandwidth.mb_s.toFixed(1) + ' MB/s · ' + bandwidth.source_count + (bandwidth.source_count === 1 ? ' sender' : ' senders') :
+      (bandwidth ? 'Source report expired' : 'Waiting for source reports');
+  }
 
   for (let i = 2; i <= 30; i++) {
     const o = document.createElement('option');
@@ -509,7 +603,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
         }, {displaylogo: false, responsive: true});
     }
 
-    initSeriesPlot('plotEPS', 'Events per second (last 60 s)');
+    initSeriesPlot('plotEPS', 'Events Processed per Second (last 60s)');
     initHistPlot('plotZ0', 'z0 (best chisq/Ndof per candidate)', 'z0', '#dc2626', 220);
     initHistPlot('plotFcal', 'fcalShower energy', 'E', '#2563eb', 220);
     initHistPlot('plotPiPi', 'Invariant mass of all pi+ pi- pairs', 'M(π+π-) [GeV]', '#7c3aed', 320);
@@ -572,6 +666,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
     window.ws = ws;
     ws.onopen = () => { statusEl.textContent = 'Connected'; };
     ws.onclose = () => {
+      updateTransfer({fresh: false});
       statusEl.textContent = 'Disconnected, reconnecting…';
       setTimeout(connect, 1000);
     };
@@ -579,6 +674,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
     ws.onmessage = (ev) => {
       const data = JSON.parse(ev.data);
       if (!data || !data.plots) return;
+      updateTransfer(data.send_bandwidth);
 
       if (data.ring_size) ringEl.value = String(data.ring_size);
       if (data.update_period) periodEl.value = String(data.update_period);
@@ -613,6 +709,7 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
 </body>
 </html>
         """
+        html = html.replace("<!-- TRANSFER_MAP -->", Path(__file__).with_name("us-transfer-map.svg").read_text())
         return HTMLResponse(content=html)
 
     @app.websocket("/ws")
@@ -649,7 +746,10 @@ def build_app(zmq_endpoint: str, ring_size: int, update_period: int) -> FastAPI:
                 try:
                     events = pickle.loads(payload)
                     if isinstance(events, dict):
-                        await app.state.dashboard.ingest_chunk(events)
+                        if events.get("_amsc_type") == "source_bandwidth":
+                            await app.state.dashboard.ingest_source_bandwidth(events)
+                        else:
+                            await app.state.dashboard.ingest_chunk(events)
                 except Exception as exc:
                     print(f"Dropped invalid payload: {exc}")
         finally:

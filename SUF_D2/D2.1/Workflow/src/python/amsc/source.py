@@ -20,6 +20,10 @@ def add_arguments(parser):
     parser.add_argument("--include-tables", help="Comma-separated list of tables (HDDM tags) to include")
     parser.add_argument("--input-port", type=int, default=19900, help="Port for EJFAT to stream data back to. If no port is specified, uses 19700+id")
     parser.add_argument("--monitor-zmq-uri", default="tcp://127.0.0.1:5557", help="ZMQ PUSH target for monitor process")
+    route = parser.add_mutually_exclusive_group()
+    route.add_argument("--nersc", dest="viz_destination", action="store_const", const="nersc", help="Show BNL to NERSC on the monitor map (default)")
+    route.add_argument("--jlab", dest="viz_destination", action="store_const", const="jlab", help="Show BNL to JLab on the monitor map; does not change EJFAT routing")
+    parser.set_defaults(viz_destination="nersc")
     parser.add_argument("--stats-every", type=float, default=3.0, help="Print one stats line every n seconds")
     parser.add_argument("--verbose", action=argparse.BooleanOptionalAction, default=False, help="Print full message content")
     parser.add_argument("--batch-size", type=int, default=1, help="Physics events per message")
@@ -48,7 +52,7 @@ def run_source(id, args):
     ejfat_sender = ejfat.EjfatSender(ejfat_uri_raw, id, args.mtu, args.ip)
     ejfat_sender.connect()
 
-    ejfat_receiver = ejfat.EjfatReceiver("source_receiver", ejfat_uri_processed, args.ip, args.input_port+id)
+    ejfat_receiver = ejfat.EjfatReceiver(f"source_receiver{id}", ejfat_uri_processed, args.ip, args.input_port+id)
     ejfat_receiver.connect()
 
     # ZMQ link to supervisor
@@ -94,7 +98,10 @@ def run_source(id, args):
 
     event_nr = 0
     sent_raw_count = 0
+    sent_raw_bytes = 0
     recv_processed_count = 0
+    events_sent_total = 0
+    events_received_total = 0
     forwarded_count = 0
     decode_failures = 0
     monitor_send_failures = 0
@@ -130,6 +137,8 @@ def run_source(id, args):
             print(f"Sending raw data batch {event_nr} of size {len(data)}")
         ejfat_sender.send(data, event_nr)
         sent_raw_count += 1
+        sent_raw_bytes += len(data)
+        events_sent_total += len(msg["reconstructedPhysicsEvent"])
 
         # Receive ZMQ shutdown message (nonblocking)
         if poller.poll(0):
@@ -152,6 +161,7 @@ def run_source(id, args):
                     table_name: processed_msg[table_name]
                     for table_name in processed_msg.keys()
                 }
+                events_received_total += len(processed_tables["reconstructedPhysicsEvent"])
             except Exception as exc:
                 decode_failures += 1
                 print(f"Warning: failed to decode processed payload ({decode_failures} errors): {exc}")
@@ -174,6 +184,7 @@ def run_source(id, args):
         dt = t2 - t0
         if dt > args.stats_every:
             raw_rate = sent_raw_count / dt
+            raw_mb_s = sent_raw_bytes / dt / 1_000_000
             proc_rate = recv_processed_count / dt
             mon_rate = forwarded_count / dt
             print(
@@ -183,8 +194,14 @@ def run_source(id, args):
                 f"monitor_fwd={forwarded_count} ({mon_rate:.1f}/s) "
                 f"decode_fail={decode_failures} monitor_send_fail={monitor_send_failures}"
             )
+            rates_socket.send_pyobj({
+                "id": id, "raw_mb_s": raw_mb_s,
+                "events_sent_total": events_sent_total,
+                "events_received_total": events_received_total,
+            })
             t0 = t2
             sent_raw_count = 0
+            sent_raw_bytes = 0
             recv_processed_count = 0
             forwarded_count = 0
 
@@ -216,6 +233,7 @@ def run(args):
     print("  include_tables: ", args.include_tables)
     print("  input_port:     ", args.input_port)
     print("  monitor_zmq_uri:", args.monitor_zmq_uri)
+    print("  viz_destination:", args.viz_destination)
     print("  stats_every:    ", args.stats_every)
     print("  max_event_rate: ", args.max_event_rate)
     print("  preload:        ", args.preload)
@@ -238,6 +256,12 @@ def run(args):
     for w in workers:
         w.start()
 
+    monitor_rates_socket = ctx.socket(zmq.PUSH)
+    monitor_rates_socket.setsockopt(zmq.LINGER, 0)
+    monitor_rates_socket.setsockopt(zmq.SNDHWM, 1)
+    monitor_rates_socket.setsockopt(zmq.IMMEDIATE, 1)
+    monitor_rates_socket.connect(args.monitor_zmq_uri)
+
     def shutdown(signum, frame):
         print("\nTelling sources to shut down ...")
         ctrl_socket.send_string("stop")        # broadcast to all workers at once
@@ -247,15 +271,32 @@ def run(args):
         print("Done joining workers.")
         rates_socket.close()
         ctrl_socket.close()
+        monitor_rates_socket.close()
         ctx.term()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
 
+    source_rates = {}
     while True:
-        print("Entered loop")
         msg = rates_socket.recv_pyobj()         # blocks until any source sends
-
-        # Right now nobody sends
-        # But we'd want this for the GUI potentially
+        source_rates[msg["id"]] = msg
+        if len(source_rates) == args.parallelism:
+            total_mb_s = sum(report["raw_mb_s"] for report in source_rates.values())
+            events_sent = sum(report["events_sent_total"] for report in source_rates.values())
+            events_received = sum(report["events_received_total"] for report in source_rates.values())
+            print(
+                f"All sources ({args.parallelism}): "
+                f"raw_tx_offered={total_mb_s:.3f} MB/s ({total_mb_s * 8:.3f} Mbit/s) "
+                f"events_sent_total={events_sent} events_received_total={events_received}"
+            )
+            try:
+                monitor_rates_socket.send_pyobj({
+                    "_amsc_type": "source_bandwidth", "raw_mb_s": total_mb_s,
+                    "source_count": args.parallelism, "report_interval": args.stats_every,
+                    "destination": args.viz_destination,
+                }, flags=zmq.NOBLOCK)
+            except zmq.Again:
+                pass
+            source_rates.clear()
 
