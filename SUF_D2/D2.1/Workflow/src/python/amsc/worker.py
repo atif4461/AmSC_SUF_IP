@@ -164,7 +164,7 @@ def process_data(msg: message.Message, verbose: bool) -> bytes:
             # Mike 11/24/2026
             tf_xy = (tf_xy.sort_values("chi2_ndof", kind="stable").drop_duplicates(subset=["chargedTrack"], keep="first"))
             #idx = tf_xy.groupby("chargedTrack", dropna=False)["chi2_ndof"].idxmin()
-            tf_xy = tf_xy.loc[idx]
+            #tf_xy = tf_xy.loc[idx]
         tf_xy = tf_xy[["x0", "y0"]].dropna()
         track_x0y0_df = tf_xy
 
