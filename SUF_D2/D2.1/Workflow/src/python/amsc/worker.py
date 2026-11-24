@@ -64,8 +64,12 @@ def process_data(msg: message.Message, verbose: bool) -> bytes:
     if not tf_view.empty and "z0" in tf_view.columns:
         candidate_keys = [k for k in ["reconstructedPhysicsEvent", "candidateId"] if k in tf_view.columns]
         if candidate_keys:
-            best_idx = tf_view.groupby(candidate_keys, dropna=False)["chi2_ndof"].idxmin()
-            zvals = pd.to_numeric(tf_view.loc[best_idx, "z0"], errors="coerce").dropna()
+            # Mike 11/24/2026
+            sub = tf_view[candidate_keys + ["chi2_ndof", "z0"]].dropna(subset=["chi2_ndof"])
+            best_z0 = (sub.sort_values("chi2_ndof", kind="mergesort").drop_duplicates(subset=candidate_keys)["z0"])
+            zvals = pd.to_numeric(best_z0, errors="coerce").dropna()
+            #best_idx = tf_view.groupby(candidate_keys, dropna=False)["chi2_ndof"].idxmin()
+            #zvals = pd.to_numeric(tf_view.loc[best_idx, "z0"], errors="coerce").dropna()
         else:
             zvals = pd.to_numeric(tf_view["z0"], errors="coerce").dropna()
         z0_best_df = pd.DataFrame({"z0": zvals.to_numpy(dtype=float)})
@@ -94,20 +98,42 @@ def process_data(msg: message.Message, verbose: bool) -> bytes:
 
         m_pi = 0.13957039
         masses = []
-        for _, ev in piv.groupby("reconstructedPhysicsEvent", dropna=False):
-            plus = ev.loc[ev["ptype"] == "Pi+", ["px", "py", "pz"]].to_numpy(dtype=float)
-            minus = ev.loc[ev["ptype"] == "Pi-", ["px", "py", "pz"]].to_numpy(dtype=float)
-            if len(plus) == 0 or len(minus) == 0:
-                continue
-            for p_plus in plus:
-                e_plus = float(np.sqrt(np.dot(p_plus, p_plus) + m_pi * m_pi))
-                for p_minus in minus:
-                    e_minus = float(np.sqrt(np.dot(p_minus, p_minus) + m_pi * m_pi))
-                    p_tot = p_plus + p_minus
-                    e_tot = e_plus + e_minus
-                    m2 = e_tot * e_tot - float(np.dot(p_tot, p_tot))
-                    masses.append(float(np.sqrt(max(m2, 0.0))))
-        pipi_mass_df = pd.DataFrame({"m_pipi": np.asarray(masses, dtype=float)})
+        
+        # Mike 11/24/2026        
+        plus_all = piv.loc[piv["ptype"] == "Pi+",["reconstructedPhysicsEvent","px","py","pz"]]
+        minus_all = piv.loc[piv["ptype"] == "Pi-",["reconstructedPhysicsEvent","px","py","pz"]]
+
+        plus_all  = plus_all.assign(E=np.sqrt(plus_all.px**2 + plus_all.py**2 + plus_all.pz**2 + m_pi**2))
+        minus_all = minus_all.assign(E=np.sqrt(minus_all.px**2 + minus_all.py**2 + minus_all.pz**2 + m_pi**2))
+
+        pairs = plus_all.merge(minus_all, on="reconstructedPhysicsEvent",suffixes=("_p","_m"))
+
+        px = pairs.px_p + pairs.px_m
+        py = pairs.py_p + pairs.py_m
+        pz = pairs.pz_p + pairs.pz_m
+
+        E = pairs.E_p + pairs.E_m
+
+        pairs["m_pipi"] = np.sqrt(np.clip(E**2 - (px**2 + py**2 + pz**2), 0.0, None))
+
+        pipi_mass_df = pairs["m_pipi"]
+        pipi_mass_df = pd.DataFrame(pipi_mass_df)
+        # Mike -----
+    
+        #for _, ev in piv.groupby("reconstructedPhysicsEvent", dropna=False):
+        #    plus = ev.loc[ev["ptype"] == "Pi+", ["px", "py", "pz"]].to_numpy(dtype=float)
+        #    minus = ev.loc[ev["ptype"] == "Pi-", ["px", "py", "pz"]].to_numpy(dtype=float)
+        #    if len(plus) == 0 or len(minus) == 0:
+        #        continue
+        #    for p_plus in plus:
+        #        e_plus = float(np.sqrt(np.dot(p_plus, p_plus) + m_pi * m_pi))
+        #        for p_minus in minus:
+        #            e_minus = float(np.sqrt(np.dot(p_minus, p_minus) + m_pi * m_pi))
+        #            p_tot = p_plus + p_minus
+        #            e_tot = e_plus + e_minus
+        #            m2 = e_tot * e_tot - float(np.dot(p_tot, p_tot))
+        #            masses.append(float(np.sqrt(max(m2, 0.0))))
+        #pipi_mass_df = pd.DataFrame({"m_pipi": np.asarray(masses, dtype=float)})
 
     # 4) fcal x,y points
     fcal_xy_df = pd.DataFrame(columns=["x", "y"])
@@ -135,7 +161,9 @@ def process_data(msg: message.Message, verbose: bool) -> bytes:
         tf_xy["x0"] = pd.to_numeric(tf_xy["x0"], errors="coerce")
         tf_xy["y0"] = pd.to_numeric(tf_xy["y0"], errors="coerce")
         if "chargedTrack" in tf_xy.columns:
-            idx = tf_xy.groupby("chargedTrack", dropna=False)["chi2_ndof"].idxmin()
+            # Mike 11/24/2026
+            tf_xy = (tf_xy.sort_values("chi2_ndof", kind="stable").drop_duplicates(subset=["chargedTrack"], keep="first"))
+            #idx = tf_xy.groupby("chargedTrack", dropna=False)["chi2_ndof"].idxmin()
             tf_xy = tf_xy.loc[idx]
         tf_xy = tf_xy[["x0", "y0"]].dropna()
         track_x0y0_df = tf_xy
